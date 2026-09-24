@@ -1,0 +1,1 @@
+export type Result<T, E> = [T, undefined] | [undefined, E]

@@ -1,0 +1,10 @@
+{
+    "structure": {
+        "root": "./example/src",
+        "build": "./example/build",
+        "exclude": [
+            "node_modules/**"
+        ]
+    },
+    "mirror": true
+}

@@ -1,0 +1,21 @@
+{
+    "name": "<>",
+    "type": "module",
+    "version": "0.1.0",
+    "description": "A ligthweight macro system.",
+    "main": "build/compare.js",
+    "keywords": [
+        "macro",
+        "text",
+        "substitution",
+        "replacement",
+        "placeholder",
+        "pattern"
+    ],
+    "author": "Manchick",
+    "license": "MIT",
+    "packageManager": "pnpm@10.22.0",
+    "devDependencies": {
+        "@types/node": "^26.6.2"
+    }
+}
