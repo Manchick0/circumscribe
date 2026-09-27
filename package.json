@@ -3,7 +3,7 @@
     "type": "module",
     "version": "0.1.0",
     "description": "A ligthweight macro system.",
-    "main": "build/compare.js",
+    "main": "build/circumscribe.js",
     "keywords": [
         "macro",
         "text",

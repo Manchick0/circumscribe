@@ -3,7 +3,7 @@ import { join, relative } from "node:path";
 import { readDefinition, readExpression } from "./parser.js";
 import { readConfig, type Config } from "./config.js";
 import { excerpt, Reader } from "./reader.js";
-import type { Scope } from "./scope.js";
+import { STANDARD, type Scope } from "./scope.js";
 import type { Function } from "./expression.js";
 import type { Diagnostic } from "./diagnostic.js";
 
@@ -136,7 +136,12 @@ function loadCircumscribe(): [Scope, undefined] | [undefined, [string, Diagnosti
         }
         break;
     }
-    return [{ parent: undefined, entries }, undefined]
+    const buffer: any = {
+        parent: STANDARD,
+        entries: entries
+    };
+    buffer["root"] = buffer;
+    return [buffer, undefined]
 }
 
 /**
@@ -201,8 +206,12 @@ function substitute(path: string, destination: string, scope: Scope): Diagnostic
             if (expression[0]) {
                 if (reader.skipWhitespace()) {
                     if (reader.readOnly('>')) {
-                        buffer.push(expression[0].evaluate(scope));
-                        continue;
+                        const snippet = expression[0].evaluate(scope);
+                        if (snippet[0] !== undefined) {
+                            buffer.push(snippet[0]);
+                            continue;
+                        }
+                        return snippet[1];
                     }
                     return { type: "source", range: reader.range(position), message: "Expected '>'" }
                 }

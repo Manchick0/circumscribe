@@ -1,4 +1,5 @@
 import type { Diagnostic } from "./diagnostic.js";
+import { readRegular } from "./parser.js";
 import type { Position, Reader } from "./reader.js";
 
 export type Pattern = { type: "any" } | { type: "literal", literal: string } | { type: "regular", expression: RegExp } | { type: "union", options: Pattern[] }
@@ -88,36 +89,17 @@ function readOption(reader: Reader): [Pattern, undefined] | [undefined, Diagnost
             return [{ type: "any" }, undefined]
         if (reader.readOnly('|'))
             return readLiteral(reader, position);
-        if (reader.readOnly('/'))
-            return readRegular(reader, position);
+        if (reader.isAt('/')) {
+            const expression = readRegular(reader);
+            if (expression[0] !== undefined)
+                return [{ type: "regular", expression: expression[0] }, undefined]
+            return expression;
+        }
     }
     return [undefined, {
         type: "source",
         message: "Expected a pattern",
         range: reader.fullRange()
-    }]
-}
-
-function readRegular(reader: Reader, position: Position): [Pattern, undefined] | [undefined, Diagnostic] {
-    const buffer: string[] = [];
-    while (reader.canRead()) {
-        const c = reader.peek()!;
-        if (reader.readOnly('/'))
-            return [{
-                type: "regular",
-                expression: new RegExp(buffer.join(''), "g")
-            }, undefined]
-        if (reader.readOnly('\/')) {
-            buffer.push('/');
-            continue;
-        }
-        buffer.push(c);
-        reader.read();
-    }
-    return [undefined, {
-        type: "source",
-        message: "Encountered an incomplete regular pattern",
-        range: reader.range(position)
     }]
 }
 

@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import { join } from "node:path";
-import { root } from "./scope.js";
 
 const PATH: string = join(process.cwd(), "circumscribe.json");
 const DEFAULT: Config = {
@@ -38,9 +37,10 @@ export function readConfig(): [Config, undefined] | [undefined, string] {
 
 function mirror(config: any): [Config["mirror"], undefined] | [undefined, string] {
     if (Object.hasOwn(config, "mirror")) {
-        if (typeof config["mirror"] === "boolean")
-            return [config["mirror"], undefined];
-        return [undefined, `The 'mirror' property must be of type 'boolean', got '${typeof root}'`];
+        const mirror = config["mirror"];
+        if (typeof mirror === "boolean")
+            return [mirror, undefined];
+        return [undefined, `The 'mirror' property must be of type 'boolean', got '${typeof mirror}'`];
     }
     return [DEFAULT["mirror"], undefined];
 }

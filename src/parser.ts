@@ -107,59 +107,126 @@ export function readExpression(reader: Reader, precedence: Precedence): [Express
             return condition;
         }
         if (reader.readOnly('with')) {
-            const buffer: [{ name: string, range: Range }, Expression][] = [];
-            while (reader.skipWhitespace()) {
-                const [name, range] = readIdentifier(reader);
+            const expression = readExpression(reader, 2);
+            if (expression[0] !== undefined) {
                 if (reader.skipWhitespace()) {
-                    if (reader.readOnly(':=')) {
-                        const expression = readExpression(reader, 2);
-                        if (expression[0]) {
-                            buffer.push([{ name, range }, expression[0]]);
-                            if (reader.skipWhitespace()) {
-                                if (reader.readOnly(','))
-                                    continue;
-                                if (reader.readOnly(':')) {
-                                    const expression = readExpression(reader, 2);
-                                    if (expression[0]) {
-                                        return [{
-                                            range: reader.range(position),
-                                            evaluate: (scope) => {
-                                                const entries: Record<string, Function> = {};
-                                                for (const [{ name, range }, expression] of buffer) {
-                                                    const snippet = expression.evaluate(scope);
-                                                    if (snippet[0] !== undefined) {
-                                                        entries[name] = {
+                    if (reader.readOnly('as')) {
+                        if (reader.skipWhitespace()) {
+                            const [name, range] = readIdentifier(reader);
+                            if (reader.readOnly(':')) {
+                                const body = readExpression(reader, 2);
+                                if (body[0] !== undefined) {
+                                    return [{
+                                        range: reader.range(position),
+                                        evaluate: (scope) => {
+                                            const snippet = expression[0].evaluate(scope);
+                                            if (snippet[0] !== undefined) {
+                                                return body[0].evaluate({
+                                                    root: scope.root,
+                                                    entries: {
+                                                        [name]: {
+                                                            type: "source",
                                                             identifier: name,
                                                             parameters: [],
                                                             expression: {
                                                                 range: range,
                                                                 evaluate: () => [snippet[0], undefined]
                                                             }
-                                                        };
-                                                        continue;
-                                                    }
-                                                    return snippet;
-                                                }
-                                                return expression[0].evaluate({
-                                                    parent: scope,
-                                                    entries: entries
+                                                        }
+                                                    },
+                                                    parent: scope
                                                 })
                                             }
-                                        }, undefined]
-                                    }
-                                    return expression;
+                                            return snippet;
+                                        }
+                                    }, undefined];
                                 }
-                                return [undefined, { type: "source", range: reader.pointRange(), message: "Expected ':'" }]
+                                return body;
                             }
-                            return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete 'with' clause" }]
+                            return [undefined, { type: "source", range: reader.wordRange(), message: "Expected ':'" }]
                         }
-                        return expression;
+                        return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete 'with' clause" }]
                     }
-                    return [undefined, { type: "source", range: reader.wordRange(), message: "Expected ':='" }]
+                    return [undefined, { type: "source", range: reader.wordRange(), message: "Expected 'as'" }]
                 }
                 return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete 'with' clause" }]
             }
-            return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete 'with' clause" }]
+            return expression;
+        }
+        if (reader.readOnly('match')) {
+            const pattern = readRegular(reader);
+            if (pattern[0] !== undefined) {
+                if (reader.skipWhitespace()) {
+                    if (reader.readOnly('as')) {
+                        const buffer: [string, Range][] = [];
+                        while (reader.skipWhitespace()) {
+                            const [name, range] = readIdentifier(reader);
+                            buffer.push([name, range])
+                            if (reader.skipWhitespace()) {
+                                if (reader.readOnly('in')) {
+                                    const source = readExpression(reader, 2);
+                                    if (source[0] !== undefined) {
+                                        if (reader.skipWhitespace()) {
+                                            if (reader.readOnly(':')) {
+                                                const expression = readExpression(reader, 2);
+                                                if (expression[0] !== undefined) {
+                                                    return readOps(reader, {
+                                                        range: reader.range(position),
+                                                        evaluate: (scope) => {
+                                                            const snippet = source[0].evaluate(scope);
+                                                            if (snippet[0] !== undefined) {
+                                                                const match = pattern[0].exec(snippet[0]);
+                                                                if (match) {
+                                                                    const child: Record<string, Function> = {};
+                                                                    for (let i = 0; i < buffer.length; i++) {
+                                                                        const [name, range] = buffer[i]!;
+                                                                        const group = match[i + 1] ?? '';
+                                                                        child[name] = {
+                                                                            type: "source",
+                                                                            identifier: name,
+                                                                            parameters: [],
+                                                                            expression: {
+                                                                                range: range,
+                                                                                evaluate: () => [group, undefined]
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                    return expression[0].evaluate({ root: scope.root, parent: scope, entries: child });
+                                                                }
+                                                                return [undefined, {
+                                                                    type: "source",
+                                                                    message: complain(snippet[0], {
+                                                                        type: "regular",
+                                                                        expression: pattern[0]
+                                                                    }),
+                                                                    range: source[0].range,
+                                                                }]
+                                                            }
+                                                            return snippet;
+                                                        }
+                                                    }, precedence);
+                                                }
+                                                return expression;
+                                            }
+                                            return [undefined, { type: "source", range: reader.pointRange(), message: "Expected ':'" }]
+                                        }
+                                        return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete 'match' clause" }]
+                                    }
+                                    return source;
+                                }
+                                if (reader.readOnly(','))
+                                    continue;
+                                return [undefined, { type: "source", range: reader.wordRange(), message: "Expected 'in'" }]
+                            }
+                            return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete 'match' clause" }]
+                        }
+                        return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete 'match' clause" }]
+                    }
+                    return [undefined, { type: "source", range: reader.wordRange(), message: "Expected 'as'" }]
+                }
+                return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete 'match' clause" }]
+            }
+            return pattern;
         }
         if (reader.readOnly('|')) {
             const snippet = readSnippet(reader, position);
@@ -298,7 +365,7 @@ export function readDefinition(reader: Reader): [Function | undefined, undefined
             if (reader.skipWhitespace()) {
                 const [identifier] = readIdentifier(reader);
                 if (reader.skipWhitespace()) {
-                    const parameters: Function["parameters"] = [];
+                    const parameters: (Function & { type: "source" })["parameters"] = [];
                     if (reader.readOnly('(')) {
                         const params = readParameters(reader);
                         if (params[1])
@@ -306,17 +373,18 @@ export function readDefinition(reader: Reader): [Function | undefined, undefined
                         parameters.push(...params[0]);
                     }
                     if (reader.skipWhitespace()) {
-                        if (reader.readOnly(':=')) {
+                        if (reader.readOnly(':')) {
                             const expression = readExpression(reader, 2);
                             if (expression[0])
                                 return [{
+                                    type: "source",
                                     identifier: identifier,
                                     parameters: parameters,
                                     expression: expression[0]
                                 }, undefined];
                             return expression;
                         }
-                        return [undefined, { type: "source", range: reader.wordRange(), message: "Expected '::'" }]
+                        return [undefined, { type: "source", range: reader.wordRange(), message: "Expected ':'" }]
                     }
                     return [undefined, { type: "source", range: reader.range(position), message: "Encountered an incomplete definition" }]
                 }
@@ -329,8 +397,8 @@ export function readDefinition(reader: Reader): [Function | undefined, undefined
     return [undefined, undefined];
 }
 
-export function readParameters(reader: Reader): [Function["parameters"], undefined] | [undefined, Diagnostic] {
-    const buffer: Function["parameters"] = [];
+export function readParameters(reader: Reader): [(Function & { type: "source" })["parameters"], undefined] | [undefined, Diagnostic] {
+    const buffer: (Function & { type: "source" })["parameters"] = [];
     if (reader.skipWhitespace()) {
         const position = reader.position();
         if (reader.readOnly(')'))
@@ -388,6 +456,35 @@ export function readIdentifier(reader: Reader): [string, Range] {
         return [buffer.join(''), reader.range(position)];
     }
     throw new Error();
+}
+
+export function readRegular(reader: Reader): [RegExp, undefined] | [undefined, Diagnostic] {
+    if (reader.skipWhitespace()) {
+        if (reader.readOnly('/')) {
+            const buffer: string[] = [];
+            while (reader.canRead()) {
+                const c = reader.peek()!;
+                if (reader.readOnly('/'))
+                    return [new RegExp(buffer.join(''), "g"), undefined]
+                if (reader.readOnly('\/')) {
+                    buffer.push('/');
+                    continue;
+                }
+                buffer.push(c);
+                reader.read();
+            }
+        }
+        return [undefined, {
+            type: "source",
+            message: "Expected a regular expression",
+            range: reader.pointRange()
+        }]
+    }
+    return [undefined, {
+        type: "source",
+        message: "Encountered an incomplete regular expression",
+        range: reader.fullRange()
+    }]
 }
 
 export function readSnippet(reader: Reader, position: Position): [Expression, undefined] | [undefined, Diagnostic] {
