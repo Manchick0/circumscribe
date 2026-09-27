@@ -11,7 +11,7 @@ import type { Diagnostic } from "./diagnostic.js";
 const CIRCUMSCRIBED_NAME: RegExp = /^<(.+)>\.(.+)$/
 const DOT_CIRCUMSCRIBE: string = join(process.cwd(), ".circumscribe");
 
-const VERSION: string = `circumscribe 0.1.2`
+const VERSION: string = `circumscribe 0.1.3`
 const USAGE: string = `usage: circumscribe [--help | --version] [<command>] [<args>]
 
 Recursively substitute any expressions in all circumscribed files in the current working

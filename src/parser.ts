@@ -1,8 +1,7 @@
-import { attach, type Diagnostic } from "./diagnostic.js";
+import { type Diagnostic } from "./diagnostic.js";
 import { application, type Expression, type Function } from "./expression.js";
 import { BOOLEAN, complain, readPattern, satisfies, type Pattern } from "./pattern.js";
 import { combine, Reader, type Position, type Range } from "./reader.js";
-import { traverse, type Scope } from "./scope.js";
 
 type Precedence = 0 /* POSTFIX */ | 1 /* AND */ | 2 /*  */;
 
@@ -465,7 +464,7 @@ export function readRegular(reader: Reader): [RegExp, undefined] | [undefined, D
             while (reader.canRead()) {
                 const c = reader.peek()!;
                 if (reader.readOnly('/'))
-                    return [new RegExp(buffer.join(''), "g"), undefined]
+                    return [new RegExp(buffer.join('')), undefined]
                 if (reader.readOnly('\/')) {
                     buffer.push('/');
                     continue;
