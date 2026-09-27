@@ -1,7 +1,7 @@
 {
     "name": "circumscribe",
     "type": "module",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "A ligthweight macro system.",
     "main": "build/circumscribe.js",
     "keywords": [
@@ -12,6 +12,10 @@
         "placeholder",
         "pattern"
     ],
+    "scripts": {
+        "build": "tsc"
+    },
+    "bin": "build/circumscribe.js",
     "author": "Manchick",
     "license": "MIT",
     "packageManager": "pnpm@10.22.0",

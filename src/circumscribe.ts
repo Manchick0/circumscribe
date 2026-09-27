@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import fs = require("node:fs");
 import { join, relative } from "node:path";
 import { readDefinition, readExpression } from "./parser.js";
