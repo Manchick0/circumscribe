@@ -1,7 +1,7 @@
 {
     "name": "circumscribe",
     "type": "module",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "description": "A ligthweight macro system.",
     "main": "build/circumscribe.js",
     "keywords": [

@@ -1,4 +1,5 @@
 node_modules
 .circumscribe
+circumscribe.json
 .npmrc
 build

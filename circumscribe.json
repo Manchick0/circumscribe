@@ -1,10 +1,7 @@
 {
     "structure": {
-        "root": ".",
-        "build": ".",
-        "exclude": [
-            "node_modules/**"
-        ]
+        "root": "example",
+        "build": "out"
     },
-    "mirror": false
+    "mirror": true
 }
