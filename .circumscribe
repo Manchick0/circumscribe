@@ -1,1 +1,1 @@
-def world := |WORRRRLDDDDAAHHH!!!|
+def invert(operand: |true| + |false|) := if operand == |true|: |false| else |true|

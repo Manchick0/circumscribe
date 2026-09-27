@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { join } from "node:path";
+import { root } from "./scope.js";
 
 const PATH: string = join(process.cwd(), "circumscribe.json");
 const DEFAULT: Config = {
@@ -20,48 +21,65 @@ export type Config = {
     readonly mirror: boolean;
 }
 
-export function readConfig(): Config {
-    const content = fs.readFileSync(PATH, "utf8");
-    const json = JSON.parse(content);
-    return {
-        structure: structure(json),
-        mirror: mirror(json)
+export function readConfig(): [Config, undefined] | [undefined, string] {
+    if (fs.existsSync(PATH)) {
+        const content = fs.readFileSync(PATH, "utf8");
+        const json = JSON.parse(content);
+        const s = structure(json);
+        if (s[0] === undefined)
+            return s;
+        const m = mirror(json);
+        if (m[0] === undefined)
+            return m;
+        return [{ structure: s[0], mirror: m[0] }, undefined];
     }
+    return [DEFAULT, undefined];
 }
 
-function mirror(config: any): Config["mirror"] {
+function mirror(config: any): [Config["mirror"], undefined] | [undefined, string] {
     if (Object.hasOwn(config, "mirror")) {
         if (typeof config["mirror"] === "boolean")
-            return config["mirror"];
-        return DEFAULT["mirror"];
+            return [config["mirror"], undefined];
+        return [undefined, `The 'mirror' property must be of type 'boolean', got '${typeof root}'`];
     }
-    return DEFAULT["mirror"];
+    return [DEFAULT["mirror"], undefined];
 }
 
-function structure(config: any): Config["structure"] {
-    function root(structure: any): string {
+function structure(config: any): [Config["structure"], undefined] | [undefined, string] {
+    function root(structure: any): [string, undefined] | [undefined, string] {
         if (Object.hasOwn(structure, "root")) {
-            if (typeof structure["root"] === "string")
-                return structure["root"];
-            return DEFAULT["structure"]["root"];
+            const root = structure["root"];
+            if (typeof root === "string")
+                return [root, undefined];
+            return [undefined, `The 'structure/root' property must be of type 'string', got '${typeof root}'`];
         }
-        return DEFAULT["structure"]["root"];
+        return [DEFAULT["structure"]["root"], undefined];
     }
-    function build(structure: any): string {
+    function build(structure: any): [string, undefined] | [undefined, string] {
         if (Object.hasOwn(structure, "build")) {
-            if (typeof structure["build"] === "string")
-                return structure["build"];
-            return DEFAULT["structure"]["build"];
+            const build = structure["build"];
+            if (typeof build === "string")
+                return [build, undefined];
+            return [undefined, `The 'structure/build' property must be of type 'string', got '${typeof build}'`];
         }
-        return DEFAULT["structure"]["build"];
+        return [DEFAULT["structure"]["build"], undefined];
     }
     if (Object.hasOwn(config, "structure")) {
         const structure = config["structure"];
-        return {
-            root: root(structure),
-            build: build(structure),
-            exclude: []
-        };
+        if (typeof structure === "object") {
+            const r = root(structure);
+            if (r[0] == undefined)
+                return r;
+            const b = build(structure);
+            if (b[0] === undefined)
+                return b;
+            return [{
+                root: r[0],
+                build: b[0],
+                exclude: []
+            }, undefined];
+        }
+        return [undefined, `The 'structure' property must be of type 'object', got '${typeof structure}'`];
     }
-    return DEFAULT["structure"];
+    return [DEFAULT["structure"], undefined];
 }

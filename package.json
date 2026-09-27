@@ -1,5 +1,5 @@
 {
-    "name": "<>",
+    "name": "circumscribe",
     "type": "module",
     "version": "0.1.0",
     "description": "A ligthweight macro system.",

@@ -1,45 +1,8 @@
-import type { Function } from "./function.js";
-
-export const STANDARD: Scope = {
-    parent: undefined,
-    entries: {
-        identity: (env, args) => {
-            if (args.length === 1)
-                return args[0]!;
-            throw new Error();
-        },
-        env: (env, args) => {
-            if (args.length === 1 || args.length === 2) {
-                const value = process.env[args[0]!];
-                if (value)
-                    return value;
-                if (args.length === 2)
-                    return args[1]!;
-                return "";
-            }
-            throw new Error();
-        },
-        len: (env, args) => {
-            if (args.length === 1)
-                return `${args[0]!.length}`;
-            throw new Error();
-        },
-        trim: (env, args) => {
-            if (args.length === 1)
-                return args[0]!.trim();
-            throw new Error();
-        },
-        meaningful: (env, args) => {
-            if (args.length === 1)
-                return args[0]!.length > 0 ? "true" : "false"
-            throw new Error();
-        }
-    }
-}
+import type { Function } from "./expression.js";
 
 export type Scope = {
-    parent: Scope | undefined;
-    entries: {
+    readonly parent: Scope | undefined;
+    readonly entries: {
         [identifier: string]: Function;
     }
 }
@@ -51,7 +14,7 @@ export function traverse(scope: Scope, identifier: string): Function | undefined
 }
 
 export function root(scope: Scope): Scope {
-    if (scope.parent && scope.parent !== STANDARD)
+    if (scope.parent)
         return root(scope.parent);
     return scope;
 }

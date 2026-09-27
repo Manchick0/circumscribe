@@ -1,7 +1,8 @@
-import { application, forJoin, type Expression } from "./expression.js";
-import { pattern, type Function } from "./function.js";
-import { Reader } from "./reader.js";
-import { STANDARD, type Scope } from "./scope.js";
+import { attach, type Diagnostic } from "./diagnostic.js";
+import { application, type Expression, type Function } from "./expression.js";
+import { BOOLEAN, complain, readPattern, satisfies, type Pattern } from "./pattern.js";
+import { combine, Reader, type Position, type Range } from "./reader.js";
+import { traverse, type Scope } from "./scope.js";
 
 type Precedence = 0 /* POSTFIX */ | 1 /* AND */ | 2 /*  */;
 
@@ -20,297 +21,361 @@ type Precedence = 0 /* POSTFIX */ | 1 /* AND */ | 2 /*  */;
  * @param precedence 
  * @returns 
  */
-export function readExpression(reader: Reader, precedence: Precedence): Expression {
+export function readExpression(reader: Reader, precedence: Precedence): [Expression, undefined] | [undefined, Diagnostic] {
     if (reader.skipWhitespace()) {
+        const position = reader.position();
         if (reader.readOnly('(')) {
             const expression = readExpression(reader, 2);
-            if (reader.skipWhitespace()) {
-                if (reader.readOnly(')')) {
-                    return readOps(reader, expression, precedence);
+            if (expression[0]) {
+                if (reader.skipWhitespace()) {
+                    if (reader.readOnly(')'))
+                        return readOps(reader, { ...expression[0], range: reader.range(position) }, precedence);
+                    return [undefined, { type: "source", range: reader.pointRange(), message: "Expected a ')'" }];
                 }
-                throw new SyntaxError(reader.diagnostic("Expected ')'"));
+                return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete parenthesized expression" }];
             }
-            throw new SyntaxError(reader.diagnostic("Encountered an unterminated parameterized expression"));
+            return expression;
         }
         if (reader.readOnly('not')) {
             const expression = readExpression(reader, 0);
-            return readOps(reader, (scope) => {
-                const value = expression(scope);
-                if (value === "true")
-                    return "false";
-                if (value === "false")
-                    return "true";
-                throw new Error();
-            }, precedence)
+            if (expression[0]) {
+                return readOps(reader, {
+                    range: reader.range(position),
+                    evaluate: (scope) => {
+                        const snippet = expression[0].evaluate(scope);
+                        if (snippet[0] !== undefined) {
+                            if (satisfies(snippet[0], BOOLEAN)) {
+                                if (snippet[0] === "true")
+                                    return ["false", undefined];
+                                return ["true", undefined]
+                            }
+                            return [undefined, {
+                                type: "source",
+                                message: complain(snippet[0], BOOLEAN),
+                                range: expression[0].range,
+                            }];
+                        }
+                        return snippet;
+                    }
+                }, precedence)
+            }
+            return expression;
         }
         if (reader.readOnly('if')) {
             const condition = readExpression(reader, 0);
-            if (reader.skipWhitespace()) {
-                if (reader.readOnly(':')) {
-                    const expr1 = readExpression(reader, 2);
-                    if (reader.skipWhitespace()) {
-                        if (reader.readOnly("else")) {
-                            const expr2 = readExpression(reader, 0);
-                            return readOps(reader, (scope) => {
-                                const value = condition(scope);
-                                if (value === "true")
-                                    return expr1(scope);
-                                if (value === "false")
-                                    return expr2(scope);
-                                throw new Error();
-                            }, precedence)
-                        }
-                        throw new SyntaxError(reader.diagnostic("Expected an else clause"));
-                    }
-                    throw new SyntaxError(reader.diagnostic("Encountered an unterminated if clause"));
-                }
-                throw new SyntaxError(reader.diagnostic("Expected ':'"));
-            }
-            throw new SyntaxError(reader.diagnostic("Encountered an unterminated if clause"));
-        }
-        if (reader.readOnly("for")) {
-            const identifier = readIdentifier(reader);
-            if (reader.skipWhitespace()) {
-                if (reader.readOnly("between")) {
-                    const delimiter = readExpression(reader, 0);
-                    if (reader.skipWhitespace()) {
-                        if (reader.readOnly("in")) {
-                            const source = readExpression(reader, 0);
+            if (condition[0]) {
+                if (reader.skipWhitespace()) {
+                    if (reader.readOnly(':')) {
+                        const expr1 = readExpression(reader, 2);
+                        if (expr1[0]) {
                             if (reader.skipWhitespace()) {
-                                if (reader.readOnly(':')) {
-                                    const expression = readExpression(reader, 0);
-                                    if (reader.skipWhitespace() && reader.readOnly("join")) {
-                                        const join = readExpression(reader, 0);
-                                        return forJoin(identifier, delimiter, source, expression, join);
-                                    }
-                                    return forJoin(identifier, delimiter, source, expression, () => "");
-                                }
-                                throw new SyntaxError(reader.diagnostic("Expected ':'"));
-                            }
-                            throw new SyntaxError(reader.diagnostic("Encountered an unterminated for clause"));
-                        }
-                        throw new SyntaxError(reader.diagnostic("Expected 'in'"));
-                    }
-                    throw new SyntaxError(reader.diagnostic("Encountered an unterminated for clause"));
-                }
-                if (reader.readOnly('in')) {
-                    const source = readExpression(reader, 0);
-                    if (reader.skipWhitespace()) {
-                        if (reader.readOnly(':')) {
-                            const expression = readExpression(reader, 0);
-                            if (reader.skipWhitespace() && reader.readOnly("join")) {
-                                const join = readExpression(reader, 0);
-                                return forJoin(identifier, () => "", source, expression, join);
-                            }
-                            return forJoin(identifier, () => "", source, expression, () => "");
-                        }
-                        throw new SyntaxError(reader.diagnostic("Expected ':'"));
-                    }
-                    throw new SyntaxError(reader.diagnostic("Encountered an unterminated for clause"));
-                }
-                throw new SyntaxError(reader.diagnostic("Expected 'in'"));
-            }
-            throw new SyntaxError(reader.diagnostic("Encountered an unterminated for clause"));
-        }
-        if (reader.readOnly('match')) {
-            const identifier = readIdentifier(reader);
-            if (reader.skipWhitespace()) {
-                if (reader.readOnly('of')) {
-                    const pattern = readExpression(reader, 2);
-                    if (reader.skipWhitespace()) {
-                        if (reader.readOnly('in')) {
-                            const source = readExpression(reader, 2);
-                            if (reader.canRead()) {
-                                if (reader.readOnly(':')) {
-                                    const expression = readExpression(reader, 2);
-                                    return readOps(reader, (scope) => {
-                                        const regex = new RegExp(pattern(scope), "g");
-                                        const src = source(scope);
-                                        return src.replaceAll(regex, (substring) => expression({
-                                            parent: scope,
-                                            entries: {
-                                                [identifier]: () => substring
+                                if (reader.readOnly("else")) {
+                                    const expr2 = readExpression(reader, 0);
+                                    if (expr2[0]) {
+                                        return readOps(reader, {
+                                            range: reader.range(position),
+                                            evaluate: (scope) => {
+                                                const snippet = condition[0].evaluate(scope);
+                                                if (snippet[0] !== undefined) {
+                                                    if (satisfies(snippet[0], BOOLEAN)) {
+                                                        if (snippet[0] === "true")
+                                                            return expr1[0].evaluate(scope);
+                                                        return expr2[0].evaluate(scope);
+                                                    }
+                                                    return [undefined, {
+                                                        type: "source",
+                                                        message: complain(snippet[0], BOOLEAN),
+                                                        range: condition[0].range,
+                                                    }]
+                                                }
+                                                return snippet;
                                             }
-                                        }))
-                                    }, precedence)
+                                        }, precedence)
+                                    }
+                                    return expr2;
                                 }
-                                throw new SyntaxError(reader.diagnostic("Expected ':'"));
+                                return [undefined, { type: "source", range: reader.wordRange(), message: "Expected an 'else' clause" }]
                             }
-                            throw new SyntaxError(reader.diagnostic("Encountered an uncomplete 'match' clause"));
+                            return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete 'if' clause" }]
                         }
-                        throw new SyntaxError(reader.diagnostic("Expected 'in'"));
+                        return expr1;
                     }
-                    throw new SyntaxError(reader.diagnostic("Encountered an uncomplete 'match' clause"));
+                    return [undefined, { type: "source", range: reader.pointRange(), message: "Expected ':'" }]
                 }
-                throw new SyntaxError(reader.diagnostic("Expected 'of'"));
+                return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete 'if' clause" }]
             }
-            throw new SyntaxError(reader.diagnostic("Encountered an uncomplete 'match' clause"));
+            return condition;
         }
         if (reader.readOnly('with')) {
-            const buffer: [string, Expression][] = [];
+            const buffer: [{ name: string, range: Range }, Expression][] = [];
             while (reader.skipWhitespace()) {
-                const name = readIdentifier(reader);
+                const [name, range] = readIdentifier(reader);
                 if (reader.skipWhitespace()) {
                     if (reader.readOnly(':=')) {
                         const expression = readExpression(reader, 2);
-                        buffer.push([name, expression]);
-                        if (reader.skipWhitespace()) {
-                            if (reader.readOnly(','))
-                                continue;
-                            if (reader.readOnly(':')) {
-                                const expression = readExpression(reader, 2);
-                                return (scope) => {
-                                    const entries: Record<string, Function> = {};
-                                    for (const [name, expression] of buffer) {
-                                        const snippet = expression(scope);
-                                        entries[name] = () => snippet;
+                        if (expression[0]) {
+                            buffer.push([{ name, range }, expression[0]]);
+                            if (reader.skipWhitespace()) {
+                                if (reader.readOnly(','))
+                                    continue;
+                                if (reader.readOnly(':')) {
+                                    const expression = readExpression(reader, 2);
+                                    if (expression[0]) {
+                                        return [{
+                                            range: reader.range(position),
+                                            evaluate: (scope) => {
+                                                const entries: Record<string, Function> = {};
+                                                for (const [{ name, range }, expression] of buffer) {
+                                                    const snippet = expression.evaluate(scope);
+                                                    if (snippet[0] !== undefined) {
+                                                        entries[name] = {
+                                                            identifier: name,
+                                                            parameters: [],
+                                                            expression: {
+                                                                range: range,
+                                                                evaluate: () => [snippet[0], undefined]
+                                                            }
+                                                        };
+                                                        continue;
+                                                    }
+                                                    return snippet;
+                                                }
+                                                return expression[0].evaluate({
+                                                    parent: scope,
+                                                    entries: entries
+                                                })
+                                            }
+                                        }, undefined]
                                     }
-                                    return expression({
-                                        parent: scope,
-                                        entries: entries
-                                    })
+                                    return expression;
                                 }
+                                return [undefined, { type: "source", range: reader.pointRange(), message: "Expected ':'" }]
                             }
-                            throw new SyntaxError(reader.diagnostic("Expected ':'"));
+                            return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete 'with' clause" }]
                         }
-                        throw new SyntaxError(reader.diagnostic("Encountered an uncomplete 'with' clause"));
+                        return expression;
                     }
-                    throw new SyntaxError(reader.diagnostic("Expected ':='"));
+                    return [undefined, { type: "source", range: reader.wordRange(), message: "Expected ':='" }]
                 }
-                throw new SyntaxError(reader.diagnostic("Encountered an uncomplete 'with' clause"));
+                return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete 'with' clause" }]
             }
-            throw new SyntaxError(reader.diagnostic("Encountered an uncomplete 'with' clause"));
+            return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete 'with' clause" }]
         }
-        if (reader.readOnly('|'))
-            return readOps(reader, readSnippet(reader), precedence);
-        const identifier = readIdentifier(reader);
+        if (reader.readOnly('|')) {
+            const snippet = readSnippet(reader, position);
+            if (snippet[0])
+                return readOps(reader, snippet[0], precedence);
+            return snippet;
+        }
+        const [identifier] = readIdentifier(reader);
         if (reader.skipWhitespace()) {
             if (reader.readOnly('(')) {
                 if (reader.skipWhitespace()) {
                     if (reader.readOnly(')'))
-                        return application(identifier, []);
-                    const buffer: Expression[] = [];
+                        return readOps(reader, application(identifier, [], reader.range(position)), precedence);
+                    const args: Expression[] = [];
                     while (reader.skipWhitespace()) {
                         const expression = readExpression(reader, precedence);
-                        if (expression) {
+                        if (expression[0]) {
                             if (reader.skipWhitespace()) {
-                                buffer.push(expression);
+                                args.push(expression[0]);
                                 if (reader.readOnly(','))
                                     continue;
                                 if (reader.readOnly(')'))
-                                    return readOps(reader, application(identifier, buffer), precedence);
-                                throw new SyntaxError(reader.diagnostic("Expected either a continuation or a termination of the argument list"));
+                                    return readOps(reader, application(identifier, args, reader.range(position)), precedence);
+                                return [undefined, { type: "source", range: reader.pointRange(), message: "Expected ')'" }]
                             }
-                            throw new SyntaxError(reader.diagnostic("Encountered an unterminated argument list"));
+                            return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete argument list'" }]
                         }
-                        throw new SyntaxError(reader.diagnostic("Expected an expression"));
+                        return expression;
                     }
-                    throw new SyntaxError(reader.diagnostic("Encountered an unterminated argument list"));
+                    return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete argument list'" }]
                 }
-                throw new SyntaxError(reader.diagnostic("Encountered an unterminated argument list"));
+                return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete argument list'" }]
             }
-            return readOps(reader, application(identifier, []), precedence);
+            return readOps(reader, application(identifier, [], reader.range(position)), precedence);
         }
-        return readOps(reader, application(identifier, []), precedence);
+        return readOps(reader, application(identifier, [], reader.range(position)), precedence);
     }
-    throw new SyntaxError(reader.diagnostic("Expected an expression"));
+    return [undefined, { type: "source", range: reader.pointRange(), message: "Expected an expression" }]
 }
 
-export function readOps(reader: Reader, expression: Expression, precedence: Precedence): Expression {
+export function readOps(reader: Reader, expression: Expression, precedence: Precedence): [Expression, undefined] | [undefined, Diagnostic] {
     if (reader.skipWhitespace()) {
+        const position = reader.position();
         if (reader.readOnly('==')) {
             const right = readExpression(reader, 0);
-            return readOps(reader, (scope) => expression(scope) === right(scope) ? "true" : "false", precedence);
+            if (right[0])
+                return readOps(reader, {
+                    range: combine(expression.range, reader.range(position)),
+                    evaluate: (scope) => {
+                        const lhs = expression.evaluate(scope);
+                        if (lhs[0] !== undefined) {
+                            const rhs = right[0].evaluate(scope);
+                            if (rhs[0] !== undefined)
+                                return [lhs[0] === rhs[0] ? "true" : "false", undefined]
+                            return rhs;
+                        }
+                        return lhs;
+                    }
+                }, precedence);
+            return right;
         }
         if (reader.readOnly('~')) {
             const right = readExpression(reader, 0);
-            return readOps(reader, (scope) => expression(scope).concat(right(scope)), precedence)
-        }
-        if (reader.readOnly('*')) {
-            const right = readExpression(reader, 0);
-            return readOps(reader, (scope) => expression(scope).concat(right(scope)), precedence)
+            if (right[0])
+                return readOps(reader, {
+                    range: combine(expression.range, reader.range(position)),
+                    evaluate: (scope) => {
+                        const lhs = expression.evaluate(scope);
+                        if (lhs[0] !== undefined) {
+                            const rhs = right[0].evaluate(scope);
+                            if (rhs[0] !== undefined) {
+                                return [lhs[0].concat(rhs[0]), undefined]
+                            }
+                            return rhs;
+                        }
+                        return lhs;
+                    }
+                }, precedence);
+            return right;
         }
         if (precedence > 0) {
             if (reader.readOnly('and')) {
                 const right = readExpression(reader, 0);
-                return readOps(reader, (scope) => {
-                    const lhs = expression(scope);
-                    const rhs = right(scope);
-                    if (lhs === "true" && rhs === "true")
-                        return "true";
-                    return "false";
-                }, precedence);
+                if (right[0])
+                    return readOps(reader, {
+                        range: combine(expression.range, reader.range(position)),
+                        evaluate: (scope) => {
+                            const lhs = expression.evaluate(scope);
+                            if (lhs[0] !== undefined) {
+                                const rhs = right[0].evaluate(scope);
+                                if (rhs[0] !== undefined) {
+                                    if (lhs[0] === "true" && rhs[0] === "true")
+                                        return ["true", undefined];
+                                    return ["false", undefined];
+                                }
+                                return rhs;
+                            }
+                            return lhs;
+                        }
+                    }, precedence);
+                return right;
             }
         }
         if (precedence > 1) {
             if (reader.readOnly('or')) {
                 const right = readExpression(reader, 1);
-                return readOps(reader, (scope) => {
-                    const lhs = expression(scope);
-                    const rhs = right(scope);
-                    if (lhs === "true" || rhs === "true")
-                        return "true";
-                    return "false";
-                }, precedence);
+                if (right[0])
+                    return readOps(reader, {
+                        range: combine(expression.range, reader.range(position)),
+                        evaluate: (scope) => {
+                            const lhs = expression.evaluate(scope);
+                            if (lhs[0] !== undefined) {
+                                const rhs = right[0].evaluate(scope);
+                                if (rhs[0] !== undefined) {
+                                    if (lhs[0] === "true" || rhs[0] === "true")
+                                        return ["true", undefined];
+                                    return ["false", undefined];
+                                }
+                                return rhs;
+                            }
+                            return lhs;
+                        }
+                    }, precedence);
+                return right;
             }
         }
-        return expression;
+        return [expression, undefined];
     }
-    return expression;
+    return [expression, undefined];
 }
 
-export function readPattern(reader: Reader): [string, Function] | undefined {
+export function readDefinition(reader: Reader): [Function | undefined, undefined] | [undefined, Diagnostic] {
     if (reader.skipWhitespace()) {
+        const position = reader.position()
         if (reader.readOnly('def')) {
             if (reader.skipWhitespace()) {
-                const identifier = readIdentifier(reader);
+                const [identifier] = readIdentifier(reader);
                 if (reader.skipWhitespace()) {
-                    const parameters: string[] = [];
-                    if (reader.readOnly('('))
-                        parameters.push(...readParameters(reader))
+                    const parameters: Function["parameters"] = [];
+                    if (reader.readOnly('(')) {
+                        const params = readParameters(reader);
+                        if (params[1])
+                            return params;
+                        parameters.push(...params[0]);
+                    }
                     if (reader.skipWhitespace()) {
                         if (reader.readOnly(':=')) {
                             const expression = readExpression(reader, 2);
-                            return [identifier, pattern(parameters, expression)];
+                            if (expression[0])
+                                return [{
+                                    identifier: identifier,
+                                    parameters: parameters,
+                                    expression: expression[0]
+                                }, undefined];
+                            return expression;
                         }
-                        throw new SyntaxError(reader.diagnostic("Expected '::'"));
+                        return [undefined, { type: "source", range: reader.wordRange(), message: "Expected '::'" }]
                     }
-                    throw new SyntaxError(reader.diagnostic("Encountered an unterminated definition"));
+                    return [undefined, { type: "source", range: reader.range(position), message: "Encountered an incomplete definition" }]
                 }
-                throw new SyntaxError(reader.diagnostic("Encountered an unterminated definition"));
+                return [undefined, { type: "source", range: reader.range(position), message: "Encountered an incomplete definition" }]
             }
-            throw new SyntaxError(reader.diagnostic("Encountered an unterminated definition"));
+            return [undefined, { type: "source", range: reader.range(position), message: "Encountered an incomplete definition" }]
         }
-        throw new SyntaxError(reader.diagnostic("Expected a definition"));
+        return [undefined, { type: "source", range: reader.pointRange(), message: "Expected a pattern" }]
     }
-    return undefined;
+    return [undefined, undefined];
 }
 
-export function readParameters(reader: Reader): string[] {
-    const buffer: string[] = [];
+export function readParameters(reader: Reader): [Function["parameters"], undefined] | [undefined, Diagnostic] {
+    const buffer: Function["parameters"] = [];
     if (reader.skipWhitespace()) {
+        const position = reader.position();
         if (reader.readOnly(')'))
-            return [];
+            return [[], undefined];
         while (reader.skipWhitespace()) {
-            const identifier = readIdentifier(reader);
-            buffer.push(identifier);
+            const [identifier, range] = readIdentifier(reader);
             if (reader.skipWhitespace()) {
-                if (reader.readOnly(','))
-                    continue;
-                if (reader.readOnly(')'))
-                    return buffer;
-                throw new SyntaxError(reader.diagnostic("Expected either a continuation or a termination of the parameter list"));
+                if (reader.readOnly(':')) {
+                    if (reader.skipWhitespace()) {
+                        const pattern = readPattern(reader);
+                        if (pattern[0] === undefined)
+                            return pattern;
+                        buffer.push({
+                            name: identifier,
+                            range: range,
+                            pattern: pattern[0]
+                        });
+                    }
+                } else {
+                    buffer.push({
+                        name: identifier,
+                        range: range,
+                        pattern: { type: "any" }
+                    });
+                }
+                if (reader.skipWhitespace()) {
+                    if (reader.readOnly(','))
+                        continue;
+                    if (reader.readOnly(')'))
+                        return [buffer, undefined];
+                    return [undefined, { type: "source", range: reader.range(position), message: "Encountered an incomplete parameter list" }]
+                }
+                return [undefined, { type: "source", range: reader.range(position), message: "Encountered an incomplete parameter list" }]
             }
-            throw new SyntaxError(reader.diagnostic("Encountered an unterminated parameter list"));
+            return [undefined, { type: "source", range: reader.range(position), message: "Encountered an incomplete parameter list" }]
         }
-        throw new SyntaxError(reader.diagnostic("Encountered an unterminated parameter list"));
+        return [undefined, { type: "source", range: reader.range(position), message: "Encountered an incomplete parameter list" }]
     }
-    throw new SyntaxError(reader.diagnostic("Encountered an unterminated parameter list"));
+    return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete parameter list" }]
 }
 
-export function readIdentifier(reader: Reader): string {
+export function readIdentifier(reader: Reader): [string, Range] {
     if (reader.skipWhitespace()) {
         const buffer: string[] = [];
+        const position = reader.position();
         while (reader.canRead()) {
             const c = reader.peek()!;
             if (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c === '_' || c === '-') {
@@ -320,33 +385,34 @@ export function readIdentifier(reader: Reader): string {
             }
             break;
         }
-        if (buffer.length == 0)
-            throw new Error(reader.diagnostic("Here"));
-        return buffer.join('');
+        return [buffer.join(''), reader.range(position)];
     }
     throw new Error();
 }
 
-export function readSnippet(reader: Reader): Expression {
-    const children: Expression[] = [];
+export function readSnippet(reader: Reader, position: Position): [Expression, undefined] | [undefined, Diagnostic] {
+    const children: (string | Expression)[] = [];
     const buffer: string[] = [];
     while (reader.canRead()) {
         const c = reader.peek()!;
         if (reader.readOnly('<')) {
             const expression = readExpression(reader, 2);
-            if (reader.skipWhitespace()) {
-                if (reader.readOnly('>')) {
-                    if (buffer.length > 0) {
-                        const content = buffer.join('');
-                        children.push(() => content);
+            if (expression[0]) {
+                if (reader.skipWhitespace()) {
+                    if (reader.readOnly('>')) {
+                        if (buffer.length > 0) {
+                            const content = buffer.join('');
+                            children.push(content);
+                        }
+                        children.push(expression[0]);
+                        buffer.length = 0;
+                        continue;
                     }
-                    children.push(expression);
-                    buffer.length = 0;
-                    continue;
+                    return [undefined, { type: "source", range: reader.pointRange(), message: "Expected '>' to terminate a substitution clause" }]
                 }
-                throw new SyntaxError(reader.diagnostic("Expected '>' to terminate a substitution clause"));
+                return [undefined, { type: "source", range: reader.range(position), message: "Encountered an incomplete snippet" }]
             }
-            throw new SyntaxError(reader.diagnostic("Encountered an unterminated snippet"));
+            return expression;
         }
         if (reader.readOnly('\\')) {
             if (reader.readOnly('<')) {
@@ -381,19 +447,35 @@ export function readSnippet(reader: Reader): Expression {
                 buffer.push('\b');
                 continue;
             }
-            throw new SyntaxError(reader.diagnostic(`Unrecognized escape sequence.`));
+            return [undefined, { type: "source", range: reader.pointRange(), message: "Encountered an unknown escape sequence" }]
         }
         if (reader.readOnly('|')) {
             if (buffer.length > 0 || children.length === 0) {
                 const content = buffer.join('');
-                children.push(() => content);
+                children.push(content);
             }
-            if (children.length > 1)
-                return (scope) => children.map(child => child(scope)).join('');
-            return children[0]!
+            return [{
+                range: reader.range(position),
+                evaluate: (scope) => {
+                    const buffer = [];
+                    for (const child of children) {
+                        if (typeof child === "string") {
+                            buffer.push(child);
+                            continue;
+                        }
+                        const result = child.evaluate(scope);
+                        if (result[0]) {
+                            buffer.push(result[0])
+                            continue;
+                        }
+                        return result;
+                    }
+                    return [buffer.join(''), undefined]
+                }
+            }, undefined];
         }
         buffer.push(c);
         reader.read();
     }
-    throw new SyntaxError(reader.diagnostic("Encountered an unterminated snippet"));
+    return [undefined, { type: "source", range: reader.range(position), message: "Encountered an incomplete snippet" }]
 }

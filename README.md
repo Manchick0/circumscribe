@@ -1,6 +1,6 @@
 # Circumscribe
 
-A lightweight macro system in under 1.000 lines of TS.
+A lightweight macro system in ~1.000 lines of TS.
 
 ## Introduction
 
@@ -39,3 +39,10 @@ def DESCRIPTION := |A lightweight macro system, v<VERSION>|
 > ```ccs
 > def DESCRIPTION := |A lightweight macro system \| v<VERSION>| 
 > ```
+
+## Roadmap (Please delete me)
+
+- Comments in .circumscribe
+- Errors within expressions
+    - Error macro?
+- 
