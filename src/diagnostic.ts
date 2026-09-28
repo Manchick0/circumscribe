@@ -1,9 +1,16 @@
-import type { Range } from "./reader.js";
+import { Excerpt } from "./position.js";
 
-export type Diagnostic = { type: "source", message: string, range: Range } | { type: "native", message: string }
+export type Diagnostic = {
+    readonly type: "source",
+    readonly message: string,
+    readonly excerpt: Excerpt
+} | {
+    readonly type: "native",
+    readonly message: string
+}
 
-export function attach(diagnostic: Diagnostic, range: Range): Diagnostic {
+export function attach(diagnostic: Diagnostic, excerpt: Excerpt): Diagnostic {
     if (diagnostic.type === "native")
-        return { type: "source", message: diagnostic.message, range: range };
+        return { type: "source", message: diagnostic.message, excerpt: excerpt };
     return diagnostic;
 }

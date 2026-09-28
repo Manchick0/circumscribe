@@ -3,10 +3,11 @@ import fs = require("node:fs");
 import { join, relative } from "node:path";
 import { readDefinition, readExpression } from "./parser.js";
 import { readConfig, type Config } from "./config.js";
-import { excerpt, Reader } from "./reader.js";
 import { STANDARD, type Scope } from "./scope.js";
 import type { Function } from "./expression.js";
 import type { Diagnostic } from "./diagnostic.js";
+import { Reader } from "./reader.js";
+import { display, pointer } from "./position.js";
 
 const CIRCUMSCRIBED_NAME: RegExp = /^<(.+)>\.(.+)$/
 const DOT_CIRCUMSCRIBE: string = join(process.cwd(), ".circumscribe");
@@ -55,7 +56,7 @@ function main(args: string[]): number {
                 if (options.length > 1) {
                     const scope = loadCircumscribe();
                     if (scope[0]) {
-                        const reader = new Reader(options[1]!);
+                        const reader = new Reader("--evaluate", options[1]!);
                         const expression = readExpression(reader, 2);
                         if (expression[0]) {
                             const result = expression[0].evaluate(scope[0]);
@@ -64,21 +65,30 @@ function main(args: string[]): number {
                                 return 0;
                             }
                             const diagnostic = result[1];
-                            if (diagnostic.type === "source")
-                                console.error(excerpt(options[1]!, diagnostic.range));
-                            console.error(diagnostic.message);
+                            if (diagnostic.type === "source") {
+                                console.error(display(diagnostic.excerpt));
+                                console.error(`${pointer(diagnostic.excerpt)} ${diagnostic.message}`);
+                                return 1;
+                            }
+                            console.error(`${diagnostic.message}`);
                             return 1;
                         }
                         const diagnostic = expression[1];
-                        if (diagnostic.type === "source")
-                            console.error(excerpt(options[1]!, diagnostic.range));
-                        console.error(diagnostic.message);
+                        if (diagnostic.type === "source") {
+                            console.error(display(diagnostic.excerpt));
+                            console.error(`${pointer(diagnostic.excerpt)} ${diagnostic.message}`);
+                            return 1;
+                        }
+                        console.error(`${diagnostic.message}`);
                         return 1;
                     }
-                    const [{ name, content }, diagnostic] = scope[1];
-                    if (diagnostic.type === "source")
-                        console.error(excerpt(content, diagnostic.range));
-                    console.error(`(${name}) ${diagnostic.message}`);
+                    const diagnostic = scope[1];
+                    if (diagnostic.type === "source") {
+                        console.error(display(diagnostic.excerpt));
+                        console.error(`${pointer(diagnostic.excerpt)} ${diagnostic.message}`);
+                        return 1;
+                    }
+                    console.error(`${diagnostic.message}`);
                     return 1;
                 }
                 return 0;
@@ -97,20 +107,25 @@ function main(args: string[]): number {
         if (fs.existsSync(DOT_CIRCUMSCRIBE)) {
             const scope = loadCircumscribe();
             if (scope[0]) {
-                const result = splitSubstitute(config[0].structure.root, config[0], scope[0]);
-                if (result) {
-                    const [{ name, content }, diagnostic] = result;
-                    if (diagnostic.type === "source")
-                        console.error(excerpt(content, diagnostic.range));
-                    console.error(`(${name}) ${diagnostic.message}`);
+                const diagnostic = splitSubstitute(config[0].structure.root, config[0], scope[0]);
+                if (diagnostic) {
+                    if (diagnostic.type === "source") {
+                        console.error(display(diagnostic.excerpt));
+                        console.error(`${pointer(diagnostic.excerpt)} ${diagnostic.message}`);
+                        return 1;
+                    }
+                    console.error(`${diagnostic.message}`);
                     return 1;
                 }
                 return 0;
             }
-            const [{ name, content }, diagnostic] = scope[1];
-            if (diagnostic.type === "source")
-                console.error(excerpt(content, diagnostic.range));
-            console.error(`(${name}) ${diagnostic.message}`);
+            const diagnostic = scope[1];
+            if (diagnostic.type === "source") {
+                console.error(display(diagnostic.excerpt));
+                console.error(`${pointer(diagnostic.excerpt)} ${diagnostic.message}`);
+                return 1;
+            }
+            console.error(`${diagnostic.message}`);
             return 1;
         }
         console.error("circumscribe: Couldn't find the .circumscribe file in the current working directory. Perhaps circumscribe init?");
@@ -130,14 +145,14 @@ function main(args: string[]): number {
  * 
  * @returns A {@linkcode Scope}, or a {@linkcode Diagnostic} if an error occurs.
  */
-function loadCircumscribe(): [Scope, undefined] | [undefined, [{ name: string, content: string }, Diagnostic]] {
+function loadCircumscribe(): [Scope, undefined] | [undefined, Diagnostic] {
     const content = fs.readFileSync(DOT_CIRCUMSCRIBE, "utf8");
-    const reader = new Reader(content);
+    const reader = new Reader(relative(process.cwd(), DOT_CIRCUMSCRIBE), content);
     const entries: Record<string, Function> = {};
     for (; ;) {
         const pattern = readDefinition(reader);
         if (pattern[1])
-            return [undefined, [{ name: relative(process.cwd(), DOT_CIRCUMSCRIBE), content: content }, pattern[1]]];
+            return [undefined, pattern[1]];
         if (pattern[0]) {
             entries[pattern[0].identifier] = pattern[0];
             continue;
@@ -167,7 +182,7 @@ function loadCircumscribe(): [Scope, undefined] | [undefined, [{ name: string, c
  * @param scope the scope used when evaluating expressions
  * @param mirror whether to mirror existing files
  */
-function splitSubstitute(path: string, config: Config, scope: Scope): [{ name: string, content: string }, Diagnostic] | undefined {
+function splitSubstitute(path: string, config: Config, scope: Scope): Diagnostic | undefined {
     const entries = fs.readdirSync(path, { withFileTypes: true });
     const { structure, mirror } = config;
     for (const entry of entries) {
@@ -202,9 +217,9 @@ function splitSubstitute(path: string, config: Config, scope: Scope): [{ name: s
  * @param destination 
  * @param scope 
  */
-function substitute(path: string, destination: string, scope: Scope): [{ name: string, content: string }, Diagnostic] | undefined {
+function substitute(path: string, destination: string, scope: Scope): Diagnostic | undefined {
     const content = fs.readFileSync(path, "utf8");
-    const reader = new Reader(content);
+    const reader = new Reader(relative(process.cwd(), path), content);
     const buffer = [];
     while (reader.canRead()) {
         const c = reader.peek();
@@ -219,13 +234,13 @@ function substitute(path: string, destination: string, scope: Scope): [{ name: s
                             buffer.push(snippet[0]);
                             continue;
                         }
-                        return [{ name: relative(process.cwd(), path), content: content }, snippet[1]];
+                        return snippet[1];
                     }
-                    return [{ name: relative(process.cwd(), path), content: content }, { type: "source", range: reader.range(position), message: "Expected '>'" }]
+                    return { type: "source", excerpt: reader.excerpt(position), message: "Expected '>'" }
                 }
-                return [{ name: relative(process.cwd(), path), content: content }, { type: "source", range: reader.range(position), message: "Encountered an incomplete substitution" }]
+                return { type: "source", excerpt: reader.excerpt(position), message: "Encountered an incomplete substitution" }
             }
-            return [{ name: relative(process.cwd(), path), content: content }, expression[1]];
+            return expression[1];
         }
         buffer.push(c);
         reader.read();

@@ -1,11 +1,15 @@
+import { Excerpt, Position } from "./position.js";
+
 export class Reader {
 
+    private readonly name: string;
     private readonly source: string;
     private absolute: number;
     private column: number;
     private line: number;
 
-    constructor(source: string, position: Position = { absolute: 0, column: 1, line: 1 }) {
+    constructor(name: string, source: string, position: Position = { absolute: 0, column: 1, line: 1 }) {
+        this.name = name;
         this.source = source;
         this.absolute = position.absolute;
         this.column = position.column;
@@ -69,6 +73,15 @@ export class Reader {
                 this.read();
                 continue;
             }
+            if (c === '#') {
+                while (this.canRead()) {
+                    const c = this.peek()!;
+                    if (c === '\n' || c === '\r')
+                        return this.skipWhitespace();
+                    this.read();
+                }
+                return false;
+            }
             return true;
         }
         return false;
@@ -82,98 +95,58 @@ export class Reader {
         return { absolute: this.absolute, column: this.column, line: this.line }
     }
 
-    range(position: Position): Range {
-        return [position, this.position()];
+    excerpt(position: Position): Excerpt {
+        return {
+            source: {
+                name: this.name,
+                content: this.source
+            },
+            range: [position, this.position()]
+        }
     }
 
-    pointRange(): Range {
-        const c = this.source.codePointAt(this.absolute);
-        if (c) {
-            if (c === 0x0A || c === 0x0D)
-                return [this.position(), { absolute: this.absolute + 1, column: 1, line: this.line + 1 }]
-            return [this.position(), { absolute: this.absolute + length(c), column: this.column, line: this.line }];
+    pointExcerpt(): Excerpt {
+        const source = { name: this.name, content: this.source };
+        const point = this.source.codePointAt(this.absolute);
+        const position = this.position();
+        if (point) {
+            if (point === 0x0A || point === 0x0D)
+                return { source: source, range: [position, { absolute: this.absolute + 1, column: 1, line: this.line + 1 }] };
+            return { source: source, range: [position, { absolute: this.absolute + length(point), column: this.column, line: this.line }] };
         }
-        return [this.position(), { absolute: this.absolute + 1, column: this.column, line: this.line }];
+        return { source: source, range: [position, { absolute: this.absolute + 1, column: this.column, line: this.line }] };
+    }
+
+    wordExcerpt(): Excerpt {
+        const c = this.peek()!;
+        if (c >= 'a' && c <= 'b' || c >= 'A' && c <= 'Z' || c === '_') {
+            const branch = this.branch();
+            while (branch.canRead()) {
+                const c = branch.peek()!;
+                if (c >= 'a' && c <= 'b' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c === '_') {
+                    branch.read();
+                    continue;
+                }
+                break;
+            }
+            return branch.excerpt(this.position());
+        }
+        return this.pointExcerpt();
+    }
+
+    fullExcerpt(): Excerpt {
+        return {
+            source: {
+                name: this.name,
+                content: this.source
+            },
+            range: [{ absolute: 0, column: 1, line: 1 }, this.position()]
+        }
     }
 
     branch(): Reader {
-        return new Reader(this.source, this.position());
+        return new Reader(this.name, this.source, this.position());
     }
-
-    wordRange(): Range {
-        const branch = this.branch();
-        while (branch.canRead()) {
-            const c = branch.peek()!;
-            if (isspace(c)) {
-                branch.read();
-                continue;
-            }
-            break;
-        }
-        return [this.position(), branch.position()];
-    }
-
-    fullRange(): Range {
-        return [{ absolute: 0, column: 1, line: 1 }, this.position()];
-    }
-}
-
-export type Position = {
-    absolute: number;
-    column: number;
-    line: number;
-}
-
-export type Range = [Position, Position];
-
-export function combine(first: Range, second: Range): Range {
-    function min(first: Position, second: Position): Position {
-        if (first.absolute < second.absolute)
-            return first;
-        return second;
-    }
-    function max(first: Position, second: Position): Position {
-        if (first.absolute >= second.absolute)
-            return first;
-        return second;
-    }
-    return [min(first[0], second[0]), max(first[1], second[1])];
-}
-
-export function excerpt(source: string, [left, right]: Range): string {
-    const begin = Math.max(source.lastIndexOf('\n', left.absolute) + 1, 0);
-    const end = (() => {
-        const position = source.indexOf('\n', right.absolute);
-        if (position === -1)
-            return source.length;
-        return position;
-    })();
-    const width = (() => {
-        const n = Math.max(left.line, right.line);
-        if (n === 0)
-            return 1;
-        return Math.floor(Math.log10(n)) + 1;
-    })();
-    const gutter = (line: number, width: number): [string[], string[]] => [
-        [`${line.toString().padStart(width)} | `],
-        [`${' '.repeat(width)} | `]
-    ];
-    const buffer: [string[], string[]][] = [gutter(left.line, width)];
-    for (let position = begin, line = left.line; position < end;) {
-        const c = source.codePointAt(position)!;
-        if (c === 0x0A || c === 0x0D) {
-            buffer.push(gutter(++line, width));
-            if (c === 0x0D)
-                if (source[position + 1] == '\n')
-                    position++;
-            position++;
-            continue;
-        }
-        buffer[buffer.length - 1]![0].push(String.fromCodePoint(c));
-        buffer[buffer.length - 1]![1].push(position >= left.absolute && position < right.absolute ? '^' : ' ');
-        position += length(c);
-    }
-    return buffer.map(line => line.map(segment => segment.join('')).join('\n')).join('\n')
 }
 
 function length(point: number): 1 | 2 {

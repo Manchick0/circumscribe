@@ -1,6 +1,6 @@
 import { attach, type Diagnostic } from "./diagnostic.js";
-import type { Range } from "./reader.js";
 import { complain, satisfies, type Pattern } from "./pattern.js";
+import { Excerpt } from "./position.js";
 import { traverse, type Scope } from "./scope.js";
 
 export type Function = {
@@ -13,20 +13,20 @@ export type Function = {
     readonly identifier: string;
     readonly parameters: {
         readonly name: string,
-        readonly range: Range,
+        readonly excerpt: Excerpt,
         readonly pattern: Pattern
     }[];
     readonly expression: Expression;
 }
 
 export type Expression = {
-    readonly range: Range;
+    readonly excerpt: Excerpt;
     readonly evaluate: (scope: Scope) => [string, undefined] | [undefined, Diagnostic];
 }
 
-export function application(identifier: string, args: Expression[], range: Range): Expression {
+export function application(identifier: string, args: Expression[], excerpt: Excerpt): Expression {
     return {
-        range: range,
+        excerpt: excerpt,
         evaluate: (scope) => {
             const callee = traverse(scope, identifier);
             if (callee) {
@@ -35,7 +35,7 @@ export function application(identifier: string, args: Expression[], range: Range
                     if (type === "source") {
                         const buffer: Record<string, Function> = {};
                         for (let i = 0; i < parameters.length; i++) {
-                            const { name, pattern, range } = parameters[i]!;
+                            const { name, pattern, excerpt } = parameters[i]!;
                             const argument = args[i]!;
                             const snippet = argument.evaluate(scope);
                             if (snippet[0] !== undefined) {
@@ -45,7 +45,7 @@ export function application(identifier: string, args: Expression[], range: Range
                                         identifier: name,
                                         parameters: [],
                                         expression: {
-                                            range: range,
+                                            excerpt: excerpt,
                                             evaluate: () => snippet
                                         }
                                     }
@@ -53,7 +53,7 @@ export function application(identifier: string, args: Expression[], range: Range
                                 }
                                 return [undefined, {
                                     type: "source",
-                                    range: argument.range,
+                                    excerpt: argument.excerpt,
                                     message: complain(snippet[0], pattern)
                                 }]
                             }
@@ -73,7 +73,7 @@ export function application(identifier: string, args: Expression[], range: Range
                             }
                             return [undefined, {
                                 type: "source",
-                                range: argument.range,
+                                excerpt: argument.excerpt,
                                 message: complain(snippet[0], pattern)
                             }]
                         }
@@ -82,15 +82,15 @@ export function application(identifier: string, args: Expression[], range: Range
                     const result = callee.body(buffer);
                     if (result[0] !== undefined)
                         return result;
-                    return [undefined, attach(result[1], range)];
+                    return [undefined, attach(result[1], excerpt)];
                 }
                 return [undefined, {
                     type: "source",
-                    range: range,
+                    excerpt: excerpt,
                     message: `'${identifier}' expects ${parameters.length} argument(s), but ${args.length} were provided`
                 }];
             }
-            return [undefined, { type: "source", range: range, message: `${identifier} is not defined` }];
+            return [undefined, { type: "source", excerpt: excerpt, message: `${identifier} is not defined` }];
         }
     }
 }

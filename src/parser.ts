@@ -1,7 +1,8 @@
 import { type Diagnostic } from "./diagnostic.js";
 import { application, type Expression, type Function } from "./expression.js";
 import { BOOLEAN, complain, readPattern, satisfies, type Pattern } from "./pattern.js";
-import { combine, Reader, type Position, type Range } from "./reader.js";
+import { combine, Excerpt, Position } from "./position.js";
+import { Reader } from "./reader.js";
 
 type Precedence = 0 /* POSTFIX */ | 1 /* AND */ | 2 /*  */;
 
@@ -28,10 +29,10 @@ export function readExpression(reader: Reader, precedence: Precedence): [Express
             if (expression[0]) {
                 if (reader.skipWhitespace()) {
                     if (reader.readOnly(')'))
-                        return readOps(reader, { ...expression[0], range: reader.range(position) }, precedence);
-                    return [undefined, { type: "source", range: reader.pointRange(), message: "Expected a ')'" }];
+                        return readOps(reader, { ...expression[0], excerpt: reader.excerpt(position) }, precedence);
+                    return [undefined, { type: "source", excerpt: reader.pointExcerpt(), message: "Expected a ')'" }];
                 }
-                return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete parenthesized expression" }];
+                return [undefined, { type: "source", excerpt: reader.fullExcerpt(), message: "Encountered an incomplete parenthesized expression" }];
             }
             return expression;
         }
@@ -39,7 +40,7 @@ export function readExpression(reader: Reader, precedence: Precedence): [Express
             const expression = readExpression(reader, 0);
             if (expression[0]) {
                 return readOps(reader, {
-                    range: reader.range(position),
+                    excerpt: reader.excerpt(position),
                     evaluate: (scope) => {
                         const snippet = expression[0].evaluate(scope);
                         if (snippet[0] !== undefined) {
@@ -51,7 +52,7 @@ export function readExpression(reader: Reader, precedence: Precedence): [Express
                             return [undefined, {
                                 type: "source",
                                 message: complain(snippet[0], BOOLEAN),
-                                range: expression[0].range,
+                                excerpt: expression[0].excerpt,
                             }];
                         }
                         return snippet;
@@ -72,7 +73,7 @@ export function readExpression(reader: Reader, precedence: Precedence): [Express
                                     const expr2 = readExpression(reader, 0);
                                     if (expr2[0]) {
                                         return readOps(reader, {
-                                            range: reader.range(position),
+                                            excerpt: reader.excerpt(position),
                                             evaluate: (scope) => {
                                                 const snippet = condition[0].evaluate(scope);
                                                 if (snippet[0] !== undefined) {
@@ -84,7 +85,7 @@ export function readExpression(reader: Reader, precedence: Precedence): [Express
                                                     return [undefined, {
                                                         type: "source",
                                                         message: complain(snippet[0], BOOLEAN),
-                                                        range: condition[0].range,
+                                                        excerpt: condition[0].excerpt,
                                                     }]
                                                 }
                                                 return snippet;
@@ -93,15 +94,15 @@ export function readExpression(reader: Reader, precedence: Precedence): [Express
                                     }
                                     return expr2;
                                 }
-                                return [undefined, { type: "source", range: reader.wordRange(), message: "Expected an 'else' clause" }]
+                                return [undefined, { type: "source", excerpt: reader.wordExcerpt(), message: "Expected an 'else' clause" }]
                             }
-                            return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete 'if' clause" }]
+                            return [undefined, { type: "source", excerpt: reader.fullExcerpt(), message: "Encountered an incomplete 'if' clause" }]
                         }
                         return expr1;
                     }
-                    return [undefined, { type: "source", range: reader.pointRange(), message: "Expected ':'" }]
+                    return [undefined, { type: "source", excerpt: reader.pointExcerpt(), message: "Expected ':'" }]
                 }
-                return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete 'if' clause" }]
+                return [undefined, { type: "source", excerpt: reader.fullExcerpt(), message: "Encountered an incomplete 'if' clause" }]
             }
             return condition;
         }
@@ -116,7 +117,7 @@ export function readExpression(reader: Reader, precedence: Precedence): [Express
                                 const body = readExpression(reader, 2);
                                 if (body[0] !== undefined) {
                                     return [{
-                                        range: reader.range(position),
+                                        excerpt: reader.excerpt(position),
                                         evaluate: (scope) => {
                                             const snippet = expression[0].evaluate(scope);
                                             if (snippet[0] !== undefined) {
@@ -128,7 +129,7 @@ export function readExpression(reader: Reader, precedence: Precedence): [Express
                                                             identifier: name,
                                                             parameters: [],
                                                             expression: {
-                                                                range: range,
+                                                                excerpt: range,
                                                                 evaluate: () => [snippet[0], undefined]
                                                             }
                                                         }
@@ -142,13 +143,13 @@ export function readExpression(reader: Reader, precedence: Precedence): [Express
                                 }
                                 return body;
                             }
-                            return [undefined, { type: "source", range: reader.wordRange(), message: "Expected ':'" }]
+                            return [undefined, { type: "source", excerpt: reader.wordExcerpt(), message: "Expected ':'" }]
                         }
-                        return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete 'with' clause" }]
+                        return [undefined, { type: "source", excerpt: reader.fullExcerpt(), message: "Encountered an incomplete 'with' clause" }]
                     }
-                    return [undefined, { type: "source", range: reader.wordRange(), message: "Expected 'as'" }]
+                    return [undefined, { type: "source", excerpt: reader.wordExcerpt(), message: "Expected 'as'" }]
                 }
-                return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete 'with' clause" }]
+                return [undefined, { type: "source", excerpt: reader.fullExcerpt(), message: "Encountered an incomplete 'with' clause" }]
             }
             return expression;
         }
@@ -157,7 +158,7 @@ export function readExpression(reader: Reader, precedence: Precedence): [Express
             if (pattern[0] !== undefined) {
                 if (reader.skipWhitespace()) {
                     if (reader.readOnly('as')) {
-                        const buffer: [string, Range][] = [];
+                        const buffer: [string, Excerpt][] = [];
                         while (reader.skipWhitespace()) {
                             const [name, range] = readIdentifier(reader);
                             buffer.push([name, range])
@@ -170,7 +171,7 @@ export function readExpression(reader: Reader, precedence: Precedence): [Express
                                                 const expression = readExpression(reader, 2);
                                                 if (expression[0] !== undefined) {
                                                     return readOps(reader, {
-                                                        range: reader.range(position),
+                                                        excerpt: reader.excerpt(position),
                                                         evaluate: (scope) => {
                                                             const snippet = source[0].evaluate(scope);
                                                             if (snippet[0] !== undefined) {
@@ -185,7 +186,7 @@ export function readExpression(reader: Reader, precedence: Precedence): [Express
                                                                             identifier: name,
                                                                             parameters: [],
                                                                             expression: {
-                                                                                range: range,
+                                                                                excerpt: range,
                                                                                 evaluate: () => [group, undefined]
                                                                             }
                                                                         }
@@ -198,7 +199,7 @@ export function readExpression(reader: Reader, precedence: Precedence): [Express
                                                                         type: "regular",
                                                                         expression: pattern[0]
                                                                     }),
-                                                                    range: source[0].range,
+                                                                    excerpt: source[0].excerpt,
                                                                 }]
                                                             }
                                                             return snippet;
@@ -207,23 +208,23 @@ export function readExpression(reader: Reader, precedence: Precedence): [Express
                                                 }
                                                 return expression;
                                             }
-                                            return [undefined, { type: "source", range: reader.pointRange(), message: "Expected ':'" }]
+                                            return [undefined, { type: "source", excerpt: reader.pointExcerpt(), message: "Expected ':'" }]
                                         }
-                                        return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete 'match' clause" }]
+                                        return [undefined, { type: "source", excerpt: reader.fullExcerpt(), message: "Encountered an incomplete 'match' clause" }]
                                     }
                                     return source;
                                 }
                                 if (reader.readOnly(','))
                                     continue;
-                                return [undefined, { type: "source", range: reader.wordRange(), message: "Expected 'in'" }]
+                                return [undefined, { type: "source", excerpt: reader.wordExcerpt(), message: "Expected 'in'" }]
                             }
-                            return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete 'match' clause" }]
+                            return [undefined, { type: "source", excerpt: reader.fullExcerpt(), message: "Encountered an incomplete 'match' clause" }]
                         }
-                        return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete 'match' clause" }]
+                        return [undefined, { type: "source", excerpt: reader.fullExcerpt(), message: "Encountered an incomplete 'match' clause" }]
                     }
-                    return [undefined, { type: "source", range: reader.wordRange(), message: "Expected 'as'" }]
+                    return [undefined, { type: "source", excerpt: reader.wordExcerpt(), message: "Expected 'as'" }]
                 }
-                return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete 'match' clause" }]
+                return [undefined, { type: "source", excerpt: reader.fullExcerpt(), message: "Encountered an incomplete 'match' clause" }]
             }
             return pattern;
         }
@@ -238,7 +239,7 @@ export function readExpression(reader: Reader, precedence: Precedence): [Express
             if (reader.readOnly('(')) {
                 if (reader.skipWhitespace()) {
                     if (reader.readOnly(')'))
-                        return readOps(reader, application(identifier, [], reader.range(position)), precedence);
+                        return readOps(reader, application(identifier, [], reader.excerpt(position)), precedence);
                     const args: Expression[] = [];
                     while (reader.skipWhitespace()) {
                         const expression = readExpression(reader, precedence);
@@ -248,22 +249,22 @@ export function readExpression(reader: Reader, precedence: Precedence): [Express
                                 if (reader.readOnly(','))
                                     continue;
                                 if (reader.readOnly(')'))
-                                    return readOps(reader, application(identifier, args, reader.range(position)), precedence);
-                                return [undefined, { type: "source", range: reader.pointRange(), message: "Expected ')'" }]
+                                    return readOps(reader, application(identifier, args, reader.excerpt(position)), precedence);
+                                return [undefined, { type: "source", excerpt: reader.pointExcerpt(), message: "Expected ')'" }]
                             }
-                            return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete argument list'" }]
+                            return [undefined, { type: "source", excerpt: reader.fullExcerpt(), message: "Encountered an incomplete argument list'" }]
                         }
                         return expression;
                     }
-                    return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete argument list'" }]
+                    return [undefined, { type: "source", excerpt: reader.fullExcerpt(), message: "Encountered an incomplete argument list'" }]
                 }
-                return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete argument list'" }]
+                return [undefined, { type: "source", excerpt: reader.fullExcerpt(), message: "Encountered an incomplete argument list'" }]
             }
-            return readOps(reader, application(identifier, [], reader.range(position)), precedence);
+            return readOps(reader, application(identifier, [], reader.excerpt(position)), precedence);
         }
-        return readOps(reader, application(identifier, [], reader.range(position)), precedence);
+        return readOps(reader, application(identifier, [], reader.excerpt(position)), precedence);
     }
-    return [undefined, { type: "source", range: reader.pointRange(), message: "Expected an expression" }]
+    return [undefined, { type: "source", excerpt: reader.pointExcerpt(), message: "Expected an expression" }]
 }
 
 export function readOps(reader: Reader, expression: Expression, precedence: Precedence): [Expression, undefined] | [undefined, Diagnostic] {
@@ -273,7 +274,7 @@ export function readOps(reader: Reader, expression: Expression, precedence: Prec
             const right = readExpression(reader, 0);
             if (right[0])
                 return readOps(reader, {
-                    range: combine(expression.range, reader.range(position)),
+                    excerpt: combine(expression.excerpt, reader.excerpt(position))!,
                     evaluate: (scope) => {
                         const lhs = expression.evaluate(scope);
                         if (lhs[0] !== undefined) {
@@ -291,7 +292,7 @@ export function readOps(reader: Reader, expression: Expression, precedence: Prec
             const right = readExpression(reader, 0);
             if (right[0])
                 return readOps(reader, {
-                    range: combine(expression.range, reader.range(position)),
+                    excerpt: combine(expression.excerpt, reader.excerpt(position))!,
                     evaluate: (scope) => {
                         const lhs = expression.evaluate(scope);
                         if (lhs[0] !== undefined) {
@@ -311,7 +312,7 @@ export function readOps(reader: Reader, expression: Expression, precedence: Prec
                 const right = readExpression(reader, 0);
                 if (right[0])
                     return readOps(reader, {
-                        range: combine(expression.range, reader.range(position)),
+                        excerpt: combine(expression.excerpt, reader.excerpt(position))!,
                         evaluate: (scope) => {
                             const lhs = expression.evaluate(scope);
                             if (lhs[0] !== undefined) {
@@ -334,7 +335,7 @@ export function readOps(reader: Reader, expression: Expression, precedence: Prec
                 const right = readExpression(reader, 1);
                 if (right[0])
                     return readOps(reader, {
-                        range: combine(expression.range, reader.range(position)),
+                        excerpt: combine(expression.excerpt, reader.excerpt(position))!,
                         evaluate: (scope) => {
                             const lhs = expression.evaluate(scope);
                             if (lhs[0] !== undefined) {
@@ -383,15 +384,15 @@ export function readDefinition(reader: Reader): [Function | undefined, undefined
                                 }, undefined];
                             return expression;
                         }
-                        return [undefined, { type: "source", range: reader.wordRange(), message: "Expected ':'" }]
+                        return [undefined, { type: "source", excerpt: reader.wordExcerpt(), message: "Expected ':'" }]
                     }
-                    return [undefined, { type: "source", range: reader.range(position), message: "Encountered an incomplete definition" }]
+                    return [undefined, { type: "source", excerpt: reader.excerpt(position), message: "Encountered an incomplete definition" }]
                 }
-                return [undefined, { type: "source", range: reader.range(position), message: "Encountered an incomplete definition" }]
+                return [undefined, { type: "source", excerpt: reader.excerpt(position), message: "Encountered an incomplete definition" }]
             }
-            return [undefined, { type: "source", range: reader.range(position), message: "Encountered an incomplete definition" }]
+            return [undefined, { type: "source", excerpt: reader.excerpt(position), message: "Encountered an incomplete definition" }]
         }
-        return [undefined, { type: "source", range: reader.pointRange(), message: "Expected a pattern" }]
+        return [undefined, { type: "source", excerpt: reader.pointExcerpt(), message: "Expected a pattern" }]
     }
     return [undefined, undefined];
 }
@@ -412,14 +413,14 @@ export function readParameters(reader: Reader): [(Function & { type: "source" })
                             return pattern;
                         buffer.push({
                             name: identifier,
-                            range: range,
+                            excerpt: range,
                             pattern: pattern[0]
                         });
                     }
                 } else {
                     buffer.push({
                         name: identifier,
-                        range: range,
+                        excerpt: range,
                         pattern: { type: "any" }
                     });
                 }
@@ -428,18 +429,18 @@ export function readParameters(reader: Reader): [(Function & { type: "source" })
                         continue;
                     if (reader.readOnly(')'))
                         return [buffer, undefined];
-                    return [undefined, { type: "source", range: reader.range(position), message: "Encountered an incomplete parameter list" }]
+                    return [undefined, { type: "source", excerpt: reader.excerpt(position), message: "Encountered an incomplete parameter list" }]
                 }
-                return [undefined, { type: "source", range: reader.range(position), message: "Encountered an incomplete parameter list" }]
+                return [undefined, { type: "source", excerpt: reader.excerpt(position), message: "Encountered an incomplete parameter list" }]
             }
-            return [undefined, { type: "source", range: reader.range(position), message: "Encountered an incomplete parameter list" }]
+            return [undefined, { type: "source", excerpt: reader.excerpt(position), message: "Encountered an incomplete parameter list" }]
         }
-        return [undefined, { type: "source", range: reader.range(position), message: "Encountered an incomplete parameter list" }]
+        return [undefined, { type: "source", excerpt: reader.excerpt(position), message: "Encountered an incomplete parameter list" }]
     }
-    return [undefined, { type: "source", range: reader.fullRange(), message: "Encountered an incomplete parameter list" }]
+    return [undefined, { type: "source", excerpt: reader.fullExcerpt(), message: "Encountered an incomplete parameter list" }]
 }
 
-export function readIdentifier(reader: Reader): [string, Range] {
+export function readIdentifier(reader: Reader): [string, Excerpt] {
     if (reader.skipWhitespace()) {
         const buffer: string[] = [];
         const position = reader.position();
@@ -452,7 +453,7 @@ export function readIdentifier(reader: Reader): [string, Range] {
             }
             break;
         }
-        return [buffer.join(''), reader.range(position)];
+        return [buffer.join(''), reader.excerpt(position)];
     }
     throw new Error();
 }
@@ -476,13 +477,13 @@ export function readRegular(reader: Reader): [RegExp, undefined] | [undefined, D
         return [undefined, {
             type: "source",
             message: "Expected a regular expression",
-            range: reader.pointRange()
+            excerpt: reader.pointExcerpt()
         }]
     }
     return [undefined, {
         type: "source",
         message: "Encountered an incomplete regular expression",
-        range: reader.fullRange()
+        excerpt: reader.fullExcerpt()
     }]
 }
 
@@ -504,9 +505,9 @@ export function readSnippet(reader: Reader, position: Position): [Expression, un
                         buffer.length = 0;
                         continue;
                     }
-                    return [undefined, { type: "source", range: reader.pointRange(), message: "Expected '>' to terminate a substitution clause" }]
+                    return [undefined, { type: "source", excerpt: reader.pointExcerpt(), message: "Expected '>' to terminate a substitution clause" }]
                 }
-                return [undefined, { type: "source", range: reader.range(position), message: "Encountered an incomplete snippet" }]
+                return [undefined, { type: "source", excerpt: reader.excerpt(position), message: "Encountered an incomplete snippet" }]
             }
             return expression;
         }
@@ -543,7 +544,7 @@ export function readSnippet(reader: Reader, position: Position): [Expression, un
                 buffer.push('\b');
                 continue;
             }
-            return [undefined, { type: "source", range: reader.pointRange(), message: "Encountered an unknown escape sequence" }]
+            return [undefined, { type: "source", excerpt: reader.pointExcerpt(), message: "Encountered an unknown escape sequence" }]
         }
         if (reader.readOnly('|')) {
             if (buffer.length > 0 || children.length === 0) {
@@ -551,7 +552,7 @@ export function readSnippet(reader: Reader, position: Position): [Expression, un
                 children.push(content);
             }
             return [{
-                range: reader.range(position),
+                excerpt: reader.excerpt(position),
                 evaluate: (scope) => {
                     const buffer = [];
                     for (const child of children) {
@@ -573,5 +574,5 @@ export function readSnippet(reader: Reader, position: Position): [Expression, un
         buffer.push(c);
         reader.read();
     }
-    return [undefined, { type: "source", range: reader.range(position), message: "Encountered an incomplete snippet" }]
+    return [undefined, { type: "source", excerpt: reader.excerpt(position), message: "Encountered an incomplete snippet" }]
 }

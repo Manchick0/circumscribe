@@ -1,6 +1,7 @@
 import type { Diagnostic } from "./diagnostic.js";
+import type { Reader } from "./reader.js";
 import { readRegular } from "./parser.js";
-import type { Position, Reader } from "./reader.js";
+import { Position } from "./position.js";
 
 export type Pattern = { type: "any" } | { type: "literal", literal: string } | { type: "regular", expression: RegExp } | { type: "union", options: Pattern[] }
 
@@ -78,7 +79,7 @@ export function readPattern(reader: Reader): [Pattern, undefined] | [undefined, 
     return [undefined, {
         type: "source",
         message: "Expected a pattern",
-        range: reader.fullRange()
+        excerpt: reader.fullExcerpt()
     }]
 }
 
@@ -99,7 +100,7 @@ function readOption(reader: Reader): [Pattern, undefined] | [undefined, Diagnost
     return [undefined, {
         type: "source",
         message: "Expected a pattern",
-        range: reader.fullRange()
+        excerpt: reader.fullExcerpt()
     }]
 }
 
@@ -118,6 +119,6 @@ function readLiteral(reader: Reader, position: Position): [Pattern, undefined] |
     return [undefined, {
         type: "source",
         message: "Encountered an incomplete literal pattern",
-        range: reader.range(position)
+        excerpt: reader.excerpt(position)
     }]
 }

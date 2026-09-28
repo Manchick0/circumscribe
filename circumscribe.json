@@ -1,7 +1,7 @@
 {
     "structure": {
-        "root": "example",
-        "build": "out"
+        "root": ".",
+        "build": "."
     },
-    "mirror": true
+    "mirror": false
 }
