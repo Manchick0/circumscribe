@@ -1,10 +1,10 @@
 # Circumscribe
 
-A lightweight macro system in ~1.000 lines of TS.
+A general-purpose macro processing tool in ~1.000 lines of TS.
 
 ## Introduction
 
-Circrumscribe is a macro tool that traverses the directory it's run from, searching for specially named files and substituting all placeholders, as defined in `.circumscribe`. For a file to be considered , its **name** has to begin and end in an angle bracket:
+Circrumscribe is a tool that traverses the directory it's run from, searching for “_cicumscribed_“ files and substituting all expressions within them. For a file to be considered “_circumscribed_“, its name has to be surrounded an angle brackets — it has to be written around — it has to be **circumscribed**:
 
 ```
 |- <foo>.json -> foo.json
@@ -12,11 +12,11 @@ Circrumscribe is a macro tool that traverses the directory it's run from, search
 ```
 
 > [!NOTE]
-> Initially, when designing Circumscribe, the idea of having a dedicated file extension was considered. However, I found that by having the extention intact, we keep tooling support at its highest, while providing a convention that's unique enough to not trigger unwillingly.
+> When initially designing Circumscribe, the idea of having a dedicated file extension was considered. However, I found that by having the extention intact, we keep tooling support at its highest, while providing a convention that's unique enough to not trigger unwillingly.
 
 ## `.circumscribe`
 
-Similarly to (hopefully) most macroing tools, Compare ships a dedicated macro language that allows you to achieve quite a lot without being over-engineered. The `.circumscribe` file consists of an arbitrary number of macros. Each macro describes a name-replacement pair. To define a macro, begin with `def`, followed by the pattern's name, `:` and the replacement:
+Similarly to (hopefully) most macroing tools, circumscribe ships a dedicated macro language that allows you to achieve quite a lot without being over-engineered. The `.circumscribe` file consists of an arbitrary number of macros. Each macro describes a name-replacement pair. To define a macro, begin with `def`, followed by the pattern's name, `:` and the replacement:
 
 ```ccs
 def VERSION: |0.1.0|
