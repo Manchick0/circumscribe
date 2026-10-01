@@ -1,7 +1,0 @@
-{
-    "structure": {
-        "root": ".",
-        "build": "."
-    },
-    "mirror": false
-}
