@@ -3,16 +3,16 @@ import fs = require("node:fs");
 import { join, relative } from "node:path";
 import { readDefinition, readExpression } from "./parser.js";
 import { readConfig, type Config } from "./config.js";
-import { STANDARD, type Scope } from "./scope.js";
-import type { Function } from "./expression.js";
-import type { Diagnostic } from "./diagnostic.js";
-import { Reader } from "./reader.js";
+import { bootstrap, STANDARD, type Scope } from "./scope.js";
 import { display, pointer } from "./position.js";
+import { Reader } from "./reader.js";
+import type { Macro } from "./expression.js";
+import type { Diagnostic } from "./diagnostic.js";
 
 const CIRCUMSCRIBED_NAME: RegExp = /^<(.+)>\.(.+)$/
 const DOT_CIRCUMSCRIBE: string = join(process.cwd(), ".circumscribe");
 
-const VERSION: string = `circumscribe 0.2.0`
+const VERSION: string = `circumscribe 0.3.0`
 const USAGE: string = `usage: circumscribe [--help | --version] [<command>] [<args>]
 
 Recursively substitute any expressions in all circumscribed files in the current working
@@ -136,10 +136,10 @@ function main(args: string[]): number {
 }
 
 /**
- * Load the `.circumscribe` file in the current working directory.
+ * Load the `.circumscribe` file from the current working directory.
  * 
  * ---
- * Attempts to load the patterns defined in the `.circumscribe` file in the current working directory.
+ * Attempts to load the macros defined in the `.circumscribe` file in the current working directory.
  * If an error occurs while parsing the content of the file, `[undefined, [source, diagnostic]]` is returned. Otherwise,
  * `[scope, undefined]` is returned, where `scope` is a properly filled with definitions {@linkcode Scope}. 
  * 
@@ -148,7 +148,7 @@ function main(args: string[]): number {
 function loadCircumscribe(): [Scope, undefined] | [undefined, Diagnostic] {
     const content = fs.readFileSync(DOT_CIRCUMSCRIBE, "utf8");
     const reader = new Reader(relative(process.cwd(), DOT_CIRCUMSCRIBE), content);
-    const entries: Record<string, Function> = {};
+    const entries: Record<string, Macro> = {};
     for (; ;) {
         const pattern = readDefinition(reader);
         if (pattern[1])
@@ -159,12 +159,10 @@ function loadCircumscribe(): [Scope, undefined] | [undefined, Diagnostic] {
         }
         break;
     }
-    const buffer: any = {
+    return [bootstrap({
         parent: STANDARD,
         entries: entries
-    };
-    buffer["root"] = buffer;
-    return [buffer, undefined]
+    }), undefined]
 }
 
 /**
@@ -172,15 +170,16 @@ function loadCircumscribe(): [Scope, undefined] | [undefined, Diagnostic] {
  * 
  * ---
  * 
- * Starting at the provided `root`, all circumscribed files are recursively collected, substituted,
- * and placed in by their normalized name to the _twin-directory_ at `destination`. If `mirror` is set to `true`,
- * any non-circumscribed files are **copied** to the twin-directory.
+ * Starting from the provided `path`, all circumscribed files are recursively collected, substituted,
+ * and placed by their normalized name to the _twin-directory_ at, as specified by the given `config.`
+ * 
+ * If `mirror` is set to `true`, any non-circumscribed files are copied to the twin-directory.
  * 
  * @param path the path to recursively substitute
- * @param root the root source directory
- * @param destination the root destination directory
- * @param scope the scope used when evaluating expressions
- * @param mirror whether to mirror existing files
+ * @param config the circumscribe configuration
+ * @param scope the scope containing the definitions from `.circumscribe`
+ * 
+ * @returns A {@linkcode Diagnostic} if an error occurs, `undefined` otherwise.
  */
 function splitSubstitute(path: string, config: Config, scope: Scope): Diagnostic | undefined {
     const entries = fs.readdirSync(path, { withFileTypes: true });
@@ -208,7 +207,7 @@ function splitSubstitute(path: string, config: Config, scope: Scope): Diagnostic
 }
 
 /**
- * Substitute the content of the file at the provided `path` and place
+ * Substitute the content of the file at the given `path` and place
  * the replacement at the given `destination`.
  * 
  * ---

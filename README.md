@@ -4,11 +4,16 @@ A general-purpose macro processing tool in ~1.000 lines of TS.
 
 ## Introduction
 
-Circrumscribe is a tool that traverses the directory it's run from, searching for “_cicumscribed_“ files, and substitutes all expressions within them. For a file to be considered “_circumscribed_“, its name has to be surrounded an angle brackets — it has to be written around — it has to be **circumscribed**:
+Circrumscribe is a tool that traverses the directory it's run from, searching for “_cicumscribed_“ files, and substitutes all expressions within them. A file is considered circumscribed if its basename is surrounded by a pair of angle brackets (`<example>.txt`).
+
+A circumscribed file contains the literal source together with an arbitrary amount of substitutions. A substitution is an expression surrounded by the same pair of angle brackets (`foo <expr> bar`). All such expressions are processed by circumscribed and replaced with their result.
 
 ```
-|- <foo>.json -> foo.json
-|- <bar>.md -> bar.md
+// <foo>.json
+{
+    "name": "<name>",
+    "age": <age>
+}
 ```
 
 > [!NOTE]
@@ -19,7 +24,7 @@ Circrumscribe is a tool that traverses the directory it's run from, searching fo
 
 Similarly to (hopefully) most macroing tools, circumscribe ships a dedicated macro language that allows you to achieve quite a lot despite its simplicity. At its core lies a philosophy of "everything is a snippet". Indeed, the only type present in circumscribe are snippets.
 
-The `.circumscribe` file consists of an arbitrary number of macro definitions. Each definition describes a name-replacement pair. To define a macro, begin with `def`, followed by a name, `:` and the replacement:
+The `.circumscribe` file consists of an arbitrary number of macro definitions. Each definition describes a name-replacement pair. Once defined, the macro may be called by its name. To define a macro, begin with `def`, followed by a name, `:` and the replacement:
 
 ```circumscribe
 def version: |0.1.0|
@@ -33,7 +38,7 @@ A snippet may include further placeholders in their usual syntax of `<(expressio
 
 ```circumscribe
 def version: |0.1.0|
-def description: |A lightweight macro system, v<version>|
+def description: |A lightweight macro system \| v<version>|
 ```
 
 > [!NOTE]
@@ -45,3 +50,23 @@ def description: |A lightweight macro system, v<version>|
 > # <math-homework>.txt
 > 5 <|<|> 7
 > ```
+
+## `circumscribe.json`
+
+The behavior of circumscribe may be configured through the `circumscribe.json` config in the directory you call circumscribe from:
+
+```json
+{
+    "structure": {
+        // The root directory to search for circumscribed
+        // files in, defaults to pwd
+        "root": "./src",
+        // The sources directory to output the processed files
+        // to, defaults to pwd
+        "build": "./build"
+    },
+    // Whether to copy uncircumscribed files
+    // from sources/ to the build/ directory
+    "mirror": true
+}
+```

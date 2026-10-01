@@ -53,24 +53,34 @@ export function display(excerpt: Excerpt): string {
     return buffer.map(line => line.map(segment => segment.join('')).join('\n')).join('\n')
 }
 
-export function combine(first: Excerpt, second: Excerpt): Excerpt | undefined {
-    function min(first: Position, second: Position): Position {
-        if (first.absolute < second.absolute)
-            return first;
-        return second;
-    }
-    function max(first: Position, second: Position): Position {
-        if (first.absolute >= second.absolute)
-            return first;
-        return second;
-    }
-    if (first.source !== second.source)
-        return undefined;
+export function expand(excerpt: Excerpt, position: Position): Excerpt {
     return {
-        source: first.source,
+        source: excerpt.source,
         range: [
-            min(first.range[0], second.range[0]),
-            max(first.range[1], second.range[1])
+            min(excerpt.range[0], position),
+            max(excerpt.range[1], position)
         ]
     }
+}
+
+export function combine(excerpt: Excerpt, range: [Position, Position]): Excerpt {
+    return {
+        source: excerpt.source,
+        range: [
+            min(excerpt.range[0], range[0]),
+            max(excerpt.range[1], range[1])
+        ]
+    }
+}
+
+function min(first: Position, second: Position): Position {
+    if (first.absolute < second.absolute)
+        return first;
+    return second;
+}
+
+function max(first: Position, second: Position): Position {
+    if (first.absolute >= second.absolute)
+        return first;
+    return second;
 }

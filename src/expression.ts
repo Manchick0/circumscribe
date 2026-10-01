@@ -3,7 +3,17 @@ import { complain, satisfies, type Pattern } from "./pattern.js";
 import { Excerpt } from "./position.js";
 import { traverse, type Scope } from "./scope.js";
 
-export type Function = {
+///
+/// A macro function.
+/// ---
+/// A macro function may either be a `native` one, implemented in TypeScript,
+/// or a `source` one, defined within the `.circumscribe` file, and implemented
+/// in terms of an `Expression`.
+///
+/// Despite the differences in implementation, the parameters of `source` functions
+/// are annotated with their corresponding excerpt.
+/// 
+export type Macro = {
     readonly type: "native",
     readonly identifier: string;
     readonly parameters: Pattern[],
@@ -19,11 +29,32 @@ export type Function = {
     readonly expression: Expression;
 }
 
+///
+/// A single expression.
+/// ---
+/// An expression represents a piece of code that may be evaluated
+/// within a given `Scope`. An expression either successfully evaluates
+/// to a string, or returns a `Diagnostic` describing the error.
+///
+/// Since all expression inevitably come from a circumscribe source,
+/// every expression must always carry the `Excerpt` it originates from.
+/// 
 export type Expression = {
     readonly excerpt: Excerpt;
     readonly evaluate: (scope: Scope) => [string, undefined] | [undefined, Diagnostic];
 }
 
+///
+/// Compute an expression representing an application of a macro.
+/// ---
+/// Computes an expression that, when evaluated, finds and applies
+/// the macro function represented by the given `identifier` within
+/// the received `Scope`.
+///
+/// When applying a native function, any native diagnostic returned
+/// by the macro will be attached to the `excerpt` of the application,
+/// effectively turning the diagnostic into a source one.
+///
 export function application(identifier: string, args: Expression[], excerpt: Excerpt): Expression {
     return {
         excerpt: excerpt,
@@ -33,7 +64,7 @@ export function application(identifier: string, args: Expression[], excerpt: Exc
                 const { type, identifier, parameters } = callee;
                 if (parameters.length === args.length) {
                     if (type === "source") {
-                        const buffer: Record<string, Function> = {};
+                        const buffer: Record<string, Macro> = {};
                         for (let i = 0; i < parameters.length; i++) {
                             const { name, pattern, excerpt } = parameters[i]!;
                             const argument = args[i]!;
