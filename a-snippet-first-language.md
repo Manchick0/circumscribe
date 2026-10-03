@@ -1,5 +1,9 @@
 # A String-First Language
 
+> [!IMPORTANT]
+> This document isn't yet complete. Please refer to src/parser.ts
+> for the implementation if some aspects aren't yet discussed well.
+
 When creating circumscribe, the most important aspect of the development process was designing the expression language. Once the first prototype of any language is working, one naturally wants to introduce types, variables, statements, arithmetic, and a dozen other concepts.
 
 A similar story happened to circumscribe. Half-way in creating yet another general-purpose language, I realized that „general-purpose“ wasn‘t the right domain. Circumscribe should be a language **for** strings, not **with** strings.  
@@ -105,7 +109,7 @@ Besides being a tool we'll use to define a bunch of expressions, patterns may ap
 def foo(x: |foo| + |bar|): ...
 ```
 
-### Back to If-expressions...
+### Back to If-Expressions...
 
 While it's impossible to define if-expressions for the infinite domain of strings™, we may use our newly acquired tools to restrict the `condition` expression of an if-expressions to a subset of `|true| + |false|`. Similar boolean pattern will be used for other operations later on.
 
@@ -115,5 +119,45 @@ With conditions being restricted to our boolean subset, we define the if-express
 if |true|: |What you see...| else |What you don't see...|
 ```
 
-### Switch Expressions
+### Switch-Expressions
 
+Circumscribe too often suffers from long if-else chains. Switch-expressions provide a way to organize those in a more compact form. A switch expression operates upon an operand expression, comparing it to each of the provided cases until one is matched, in-order:
+
+```
+switch operand: case |foo|: ... case |bar|: ... default: ...
+```
+
+Yet again, given the expression-first constraint, the default branch is mandatory, and serves a double-duty both as a branch and as the gramatical termination of the switch expression.
+
+### With-Expressions
+
+Since expressions may become arbitrary large, and one may wish to reuse the same expression multiple times in a single body, a reasonable programmer's instinct would be to introduce a local variable, capturing and naming the "long expression".
+
+While "variables" aren't a concept in circumscribe, and wouldn't make sense in an expression-first language, the with-expression takes their place. A with-expression evaluates an expression upfront, binds the snippet to a named macro, and finally evaluates the body within the modified scope.
+
+```circumscribe
+with |foo| as x: if bar(x): x else |baz|
+```
+
+### Match-Expressions
+
+Regular expressions are perhaps the most essential and used tool for text processing. Due to the snippet-first nature of circumscribe, and as hinted by the regular-expression patterns, circumscribe provides a first-class way of dealing with those:
+
+The match-expression attempts to match a source expression against a pattern, binding the capture groups to local macros, as defined in the `as` block, in-order. If successful, the body is evaluated within the modified scope. Otherwise, the else expression is run.
+
+```circumscribe
+def reverse_identifier(identifier)
+    match /^([a-zA-Z]+)-(\d+)$/ as a, n in identifier:
+        |<n>-<a>|
+    else |Wrong identifier!| 
+```
+
+> In order to demonstrate how much can be achieved with match-statements, I present the standard `trim()` macro, implemented in terms of a match-expression:
+>
+> ```
+> def trim'(x): match /^\s*(.+?)\s*$/ as content in x:
+>     match /^\s+$/ in content:
+>         ||
+>     else content
+> else ||
+> ```
