@@ -4,8 +4,8 @@ import { join } from "node:path";
 const PATH: string = join(process.cwd(), "circumscribe.json");
 const DEFAULT: Config = {
     structure: {
-        root: process.cwd(),
-        build: process.cwd(),
+        root: ".",
+        build: ".",
         ignore: []
     },
     mirror: false
