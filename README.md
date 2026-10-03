@@ -6,7 +6,7 @@ A general-purpose macro processing tool in ~1.000 lines of TS.
 
 Circrumscribe is a tool that traverses the directory it's run from, searching for “_cicumscribed_“ files, and substitutes all expressions within them. A file is considered circumscribed if its basename is surrounded by a pair of angle brackets (`<example>.txt`).
 
-A circumscribed file contains the literal source together with an arbitrary amount of substitutions. A substitution is an expression surrounded by the same pair of angle brackets (`foo <expr> bar`). All such expressions are processed by circumscribed and replaced with their result.
+A circumscribed file contains the literal source together with an arbitrary amount of substitutions. A substitution is an expression surrounded by the same pair of angle brackets (`foo <(expr)> bar`). All such expressions are processed by circumscribed and replaced with their result.
 
 ```
 // <foo>.json
