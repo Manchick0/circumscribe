@@ -1,8 +1,8 @@
 import { type Diagnostic } from "./diagnostic.js";
 import { application, type Expression, type Macro } from "./expression.js";
-import { BOOLEAN, complain, readPattern, satisfies } from "./pattern.js";
-import { combine, Excerpt, expand, Position } from "./position.js";
-import { Reader } from "./reader.js";
+import { ANY, BOOLEAN, complain, readPattern, satisfies } from "./pattern.js";
+import { combine, Excerpt, expand, Position } from "./source/position.js";
+import { Reader } from "./source/reader.js";
 
 type Precedence = 0 /* POSTFIX */ | 1 /* AND */ | 2 /*  */;
 
@@ -128,13 +128,10 @@ export function readExpression(reader: Reader, precedence: Precedence): [Express
                                                             root: scope.root,
                                                             entries: {
                                                                 [identifier[0][0]]: {
-                                                                    type: "source",
+                                                                    type: "native",
                                                                     identifier: identifier[0][0],
                                                                     parameters: [],
-                                                                    expression: {
-                                                                        excerpt: identifier[0][1],
-                                                                        evaluate: () => [snippet[0], undefined]
-                                                                    }
+                                                                    body: () => [snippet[0], undefined]
                                                                 }
                                                             },
                                                             parent: scope
@@ -194,20 +191,17 @@ export function readExpression(reader: Reader, precedence: Precedence): [Express
                                                                 evaluate: (scope) => {
                                                                     const snippet = source[0].evaluate(scope);
                                                                     if (snippet[0] !== undefined) {
-                                                                        const match = pattern[0].exec(snippet[0]);
+                                                                        const match = pattern[0][0].exec(snippet[0]);
                                                                         if (match) {
                                                                             const child: Record<string, Macro> = {};
                                                                             for (let i = 0; i < groups.length; i++) {
                                                                                 const [name, range] = groups[i]!;
                                                                                 const group = match[i + 1] ?? "";
                                                                                 child[name] = {
-                                                                                    type: "source",
+                                                                                    type: "native",
                                                                                     identifier: name,
                                                                                     parameters: [],
-                                                                                    expression: {
-                                                                                        excerpt: range,
-                                                                                        evaluate: () => [group, undefined]
-                                                                                    }
+                                                                                    body: () => [group, undefined]
                                                                                 };
                                                                             }
                                                                             return expression[0].evaluate({ root: scope.root, parent: scope, entries: child });
@@ -373,9 +367,11 @@ export function readExpression(reader: Reader, precedence: Precedence): [Express
             }
             return happy;
         }
-        if (reader.readOnly("|")) {
-            const snippet = readSnippet(reader, position);
-            if (snippet[0] !== undefined) return readOperations(reader, snippet[0], precedence);
+        if (reader.isAt("|")) {
+            const snippet = readSnippet(reader);
+            if (snippet[0] !== undefined) {
+                return readOperations(reader, snippet[0], precedence);
+            }
             return snippet;
         }
         const identifier = readIdentifier(reader);
@@ -439,28 +435,28 @@ export function readOperations(reader: Reader, expression: Expression, precedenc
                 );
             return right;
         }
-        if (reader.readOnly("~")) {
-            const right = readExpression(reader, 0);
-            if (right[0] !== undefined)
+        if (reader.readOnly("satisfies")) {
+            const pattern = readPattern(reader);
+            if (pattern[0] !== undefined) {
                 return readOperations(
                     reader,
                     {
-                        excerpt: combine(expression.excerpt, right[0].excerpt.range),
+                        excerpt: combine(expression.excerpt, pattern[0][1].range),
                         evaluate: (scope) => {
-                            const lhs = expression.evaluate(scope);
-                            if (lhs[0] !== undefined) {
-                                const rhs = right[0].evaluate(scope);
-                                if (rhs[0] !== undefined) {
-                                    return [lhs[0].concat(rhs[0]), undefined];
+                            const snippet = expression.evaluate(scope);
+                            if (snippet[0] !== undefined) {
+                                if (satisfies(snippet[0], pattern[0][0])) {
+                                    return ["true", undefined];
                                 }
-                                return rhs;
+                                return ["false", undefined];
                             }
-                            return lhs;
+                            return snippet;
                         }
                     },
                     precedence
                 );
-            return right;
+            }
+            return pattern;
         }
         if (precedence > 1) {
             if (reader.readOnly("or")) {
@@ -541,6 +537,7 @@ export function readDefinition(reader: Reader): [Macro | undefined, undefined] |
                                         {
                                             type: "source",
                                             identifier: identifier[0][0],
+                                            excerpt: expand(expression[0].excerpt, position),
                                             parameters: parameters,
                                             expression: expression[0]
                                         },
@@ -578,15 +575,13 @@ export function readParameters(reader: Reader): [(Macro & { type: "source" })["p
                             if (pattern[0] === undefined) return pattern;
                             buffer.push({
                                 name: identifier[0][0],
-                                excerpt: identifier[0][1],
-                                pattern: pattern[0]
+                                pattern: pattern[0][0]
                             });
                         }
                     } else {
                         buffer.push({
                             name: identifier[0][0],
-                            excerpt: identifier[0][1],
-                            pattern: { type: "any" }
+                            pattern: ANY
                         });
                     }
                     if (reader.skipWhitespace()) {
@@ -627,14 +622,15 @@ export function readIdentifier(reader: Reader): [[string, Excerpt], undefined] |
     return [undefined, { type: "source", excerpt: reader.fullExcerpt(), message: "Expected an identifier" }];
 }
 
-export function readRegular(reader: Reader): [RegExp, undefined] | [undefined, Diagnostic] {
+export function readRegular(reader: Reader): [[RegExp, Excerpt], undefined] | [undefined, Diagnostic] {
     if (reader.skipWhitespace()) {
+        const position = reader.position();
         if (reader.readOnly("/")) {
             const buffer: string[] = [];
             while (reader.canRead()) {
                 const c = reader.peek()!;
-                if (reader.readOnly("/")) return [new RegExp(buffer.join("")), undefined];
-                if (reader.readOnly("\/")) {
+                if (reader.readOnly("/")) return [[new RegExp(buffer.join("")), reader.excerpt(position)], undefined];
+                if (reader.readOnly("\\/")) {
                     buffer.push("/");
                     continue;
                 }
@@ -661,95 +657,99 @@ export function readRegular(reader: Reader): [RegExp, undefined] | [undefined, D
     ];
 }
 
-export function readSnippet(reader: Reader, position: Position): [Expression, undefined] | [undefined, Diagnostic] {
-    const children: (string | Expression)[] = [];
-    const buffer: string[] = [];
-    while (reader.canRead()) {
-        const c = reader.peek()!;
-        if (reader.readOnly("<")) {
-            const expression = readExpression(reader, 2);
-            if (expression[0] !== undefined) {
-                if (reader.skipWhitespace()) {
-                    if (reader.readOnly(">")) {
-                        if (buffer.length > 0) {
-                            const content = buffer.join("");
-                            children.push(content);
-                        }
-                        children.push(expression[0]);
-                        buffer.length = 0;
-                        continue;
-                    }
-                    return [undefined, { type: "source", excerpt: reader.pointExcerpt(), message: "Expected '>' to terminate a substitution clause" }];
-                }
-                return [undefined, { type: "source", excerpt: reader.excerpt(position), message: "Encountered an incomplete snippet" }];
-            }
-            return expression;
-        }
-        if (reader.readOnly("\\")) {
+export function readSnippet(reader: Reader): [Expression, undefined] | [undefined, Diagnostic] {
+    const position = reader.position();
+    if (reader.readOnly("|")) {
+        const children: (string | Expression)[] = [];
+        const buffer: string[] = [];
+        while (reader.canRead()) {
+            const c = reader.peek()!;
             if (reader.readOnly("<")) {
-                buffer.push("<");
-                continue;
-            }
-            if (reader.readOnly(">")) {
-                buffer.push(">");
-                continue;
-            }
-            if (reader.readOnly("|")) {
-                buffer.push("|");
-                continue;
+                const expression = readExpression(reader, 2);
+                if (expression[0] !== undefined) {
+                    if (reader.skipWhitespace()) {
+                        if (reader.readOnly(">")) {
+                            if (buffer.length > 0) {
+                                const content = buffer.join("");
+                                children.push(content);
+                            }
+                            children.push(expression[0]);
+                            buffer.length = 0;
+                            continue;
+                        }
+                        return [undefined, { type: "source", excerpt: reader.pointExcerpt(), message: "Expected '>' to terminate a substitution clause" }];
+                    }
+                    return [undefined, { type: "source", excerpt: reader.excerpt(position), message: "Encountered an incomplete snippet" }];
+                }
+                return expression;
             }
             if (reader.readOnly("\\")) {
-                buffer.push("\\");
-                continue;
+                if (reader.readOnly("<")) {
+                    buffer.push("<");
+                    continue;
+                }
+                if (reader.readOnly(">")) {
+                    buffer.push(">");
+                    continue;
+                }
+                if (reader.readOnly("|")) {
+                    buffer.push("|");
+                    continue;
+                }
+                if (reader.readOnly("\\")) {
+                    buffer.push("\\");
+                    continue;
+                }
+                if (reader.readOnly("n")) {
+                    buffer.push("\n");
+                    continue;
+                }
+                if (reader.readOnly("r")) {
+                    buffer.push("\r");
+                    continue;
+                }
+                if (reader.readOnly("t")) {
+                    buffer.push("\t");
+                    continue;
+                }
+                if (reader.readOnly("b")) {
+                    buffer.push("\b");
+                    continue;
+                }
+                return [undefined, { type: "source", excerpt: reader.pointExcerpt(), message: "Encountered an unknown escape sequence" }];
             }
-            if (reader.readOnly("n")) {
-                buffer.push("\n");
-                continue;
-            }
-            if (reader.readOnly("r")) {
-                buffer.push("\r");
-                continue;
-            }
-            if (reader.readOnly("t")) {
-                buffer.push("\t");
-                continue;
-            }
-            if (reader.readOnly("b")) {
-                buffer.push("\b");
-                continue;
-            }
-            return [undefined, { type: "source", excerpt: reader.pointExcerpt(), message: "Encountered an unknown escape sequence" }];
-        }
-        if (reader.readOnly("|")) {
-            if (buffer.length > 0 || children.length === 0) {
-                const content = buffer.join("");
-                children.push(content);
-            }
-            return [
-                {
-                    excerpt: reader.excerpt(position),
-                    evaluate: (scope) => {
-                        const buffer = [];
-                        for (const child of children) {
-                            if (typeof child === "string") {
-                                buffer.push(child);
-                                continue;
+            if (reader.readOnly("|")) {
+                if (buffer.length > 0 || children.length === 0) {
+                    const content = buffer.join("");
+                    children.push(content);
+                }
+                return [
+                    {
+                        excerpt: reader.excerpt(position),
+                        evaluate: (scope) => {
+                            const buffer = [];
+                            for (const child of children) {
+                                if (typeof child === "string") {
+                                    buffer.push(child);
+                                    continue;
+                                }
+                                const result = child.evaluate(scope);
+                                if (result[0] !== undefined) {
+                                    buffer.push(result[0]);
+                                    continue;
+                                }
+                                return result;
                             }
-                            const result = child.evaluate(scope);
-                            if (result[0] !== undefined) {
-                                buffer.push(result[0]);
-                                continue;
-                            }
-                            return result;
+                            return [buffer.join(""), undefined];
                         }
-                        return [buffer.join(""), undefined];
-                    }
-                },
-                undefined
-            ];
+                    },
+                    undefined
+                ];
+            }
+            buffer.push(c);
+            reader.read();
         }
-        buffer.push(c);
-        reader.read();
+        return [undefined, { type: "source", excerpt: reader.excerpt(position), message: "Encountered an incomplete snippet" }];
     }
-    return [undefined, { type: "source", excerpt: reader.excerpt(position), message: "Encountered an incomplete snippet" }];
+    return [undefined, { type: "source", excerpt: reader.fullExcerpt(), message: "Expected a snippet" }];
 }

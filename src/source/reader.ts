@@ -1,7 +1,6 @@
 import { Excerpt, Position } from "./position.js";
 
 export class Reader {
-
     private readonly name: string;
     private readonly source: string;
     private absolute: number;
@@ -23,7 +22,7 @@ export class Reader {
             const c = this.source.codePointAt(this.absolute);
             if (c === undefined) break;
             this.absolute += length(c);
-            if (c === 0xA) {
+            if (c === 0xa) {
                 this.column = 1;
                 this.line++;
                 continue;
@@ -48,8 +47,7 @@ export class Reader {
 
     peek(): string | undefined {
         const point = this.source.codePointAt(this.absolute);
-        if (point)
-            return String.fromCodePoint(point);
+        if (point) return String.fromCodePoint(point);
         return undefined;
     }
 
@@ -57,8 +55,7 @@ export class Reader {
         if (this.canRead()) {
             for (let i = 0; i < sequence.length; i++) {
                 // Relying on UTF-16 since we only care about comparing
-                if (this.source[this.absolute + i] === sequence[i])
-                    continue;
+                if (this.source[this.absolute + i] === sequence[i]) continue;
                 return false;
             }
             return true;
@@ -73,11 +70,10 @@ export class Reader {
                 this.read();
                 continue;
             }
-            if (c === '#') {
+            if (c === "#") {
                 while (this.canRead()) {
                     const c = this.peek()!;
-                    if (c === '\n' || c === '\r')
-                        return this.skipWhitespace();
+                    if (c === "\n" || c === "\r") return this.skipWhitespace();
                     this.read();
                 }
                 return false;
@@ -92,7 +88,7 @@ export class Reader {
     }
 
     position(): Position {
-        return { absolute: this.absolute, column: this.column, line: this.line }
+        return { absolute: this.absolute, column: this.column, line: this.line };
     }
 
     excerpt(position: Position): Excerpt {
@@ -102,7 +98,7 @@ export class Reader {
                 content: this.source
             },
             range: [position, this.position()]
-        }
+        };
     }
 
     pointExcerpt(): Excerpt {
@@ -110,8 +106,7 @@ export class Reader {
         const point = this.source.codePointAt(this.absolute);
         const position = this.position();
         if (point) {
-            if (point === 0x0A || point === 0x0D)
-                return { source: source, range: [position, { absolute: this.absolute + 1, column: 1, line: this.line + 1 }] };
+            if (point === 0x0a || point === 0x0d) return { source: source, range: [position, { absolute: this.absolute + 1, column: 1, line: this.line + 1 }] };
             return { source: source, range: [position, { absolute: this.absolute + length(point), column: this.column, line: this.line }] };
         }
         return { source: source, range: [position, { absolute: this.absolute + 1, column: this.column, line: this.line }] };
@@ -119,11 +114,11 @@ export class Reader {
 
     wordExcerpt(): Excerpt {
         const c = this.peek()!;
-        if (c >= 'a' && c <= 'b' || c >= 'A' && c <= 'Z' || c === '_') {
+        if ((c >= "a" && c <= "b") || (c >= "A" && c <= "Z") || c === "_") {
             const branch = this.branch();
             while (branch.canRead()) {
                 const c = branch.peek()!;
-                if (c >= 'a' && c <= 'b' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c === '_') {
+                if ((c >= "a" && c <= "b") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") || c === "_") {
                     branch.read();
                     continue;
                 }
@@ -141,7 +136,7 @@ export class Reader {
                 content: this.source
             },
             range: [{ absolute: 0, column: 1, line: 1 }, this.position()]
-        }
+        };
     }
 
     branch(): Reader {
@@ -150,11 +145,10 @@ export class Reader {
 }
 
 function length(point: number): 1 | 2 {
-    if (point > 0xFFFF)
-        return 2;
+    if (point > 0xffff) return 2;
     return 1;
 }
 
 function isspace(c: string): boolean {
-    return c === ' ' || c === '\n' || c === '\t' || c === '\r';
+    return c === " " || c === "\n" || c === "\t" || c === "\r";
 }

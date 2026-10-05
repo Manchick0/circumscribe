@@ -64,7 +64,8 @@ The behavior of circumscribe may be configured through the `circumscribe.json` c
         // The sources directory to output the processed files
         // to, defaults to pwd
         "build": "./build",
-        // The glob patterns to ignore when substituting
+        // The glob patterns to ignore when substituting. If 'mirror'
+        // is enabled, matching files aren't be copied either.
         "ignore": ["..."]
     },
     // Whether to copy uncircumscribed files

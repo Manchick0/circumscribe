@@ -1,4 +1,4 @@
-import { Excerpt } from "./position.js";
+import { Excerpt } from "./source/position.js";
 
 ///
 /// A diagnostic.
@@ -10,17 +10,18 @@ import { Excerpt } from "./position.js";
 /// and therefore may not point to an excerpt within the source. In order to circumvent
 /// this, one may wish to `attach()` an excerpt to a native diagnostic once such is present.
 ///
-export type Diagnostic = {
-    readonly type: "source",
-    readonly message: string,
-    readonly excerpt: Excerpt
-} | {
-    readonly type: "native",
-    readonly message: string
-}
+export type Diagnostic =
+    | {
+          readonly type: "source";
+          readonly message: string;
+          readonly excerpt: Excerpt;
+      }
+    | {
+          readonly type: "native";
+          readonly message: string;
+      };
 
 export function attach(diagnostic: Diagnostic, excerpt: Excerpt): Diagnostic {
-    if (diagnostic.type === "native")
-        return { type: "source", message: diagnostic.message, excerpt: excerpt };
+    if (diagnostic.type === "native") return { type: "source", message: diagnostic.message, excerpt: excerpt };
     return diagnostic;
 }

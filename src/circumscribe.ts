@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import fs = require("node:fs");
-import { dirname, isAbsolute, join, normalize, relative } from "node:path";
+import { dirname, join, normalize, relative } from "node:path";
 import { readDefinition, readExpression } from "./parser.js";
 import { readConfig, type Config } from "./config.js";
 import { bootstrap, STANDARD, type Scope } from "./scope.js";
-import { display, pointer } from "./position.js";
-import { Reader } from "./reader.js";
+import { display, Excerpt, pointer } from "./source/position.js";
+import { Reader } from "./source/reader.js";
 import type { Macro } from "./expression.js";
 import type { Diagnostic } from "./diagnostic.js";
 import { fileURLToPath } from "node:url";
@@ -164,7 +164,17 @@ function loadCircumscribe(): [Scope, undefined] | [undefined, Diagnostic] {
         const pattern = readDefinition(reader);
         if (pattern[1]) return [undefined, pattern[1]];
         if (pattern[0]) {
-            entries[pattern[0].identifier] = pattern[0];
+            const identifier = pattern[0].identifier;
+            if (identifier in entries)
+                return [
+                    undefined,
+                    {
+                        type: "source",
+                        excerpt: (pattern[0] as { excerpt: Excerpt }).excerpt,
+                        message: `'${identifier}' is already defined in this scope`
+                    }
+                ];
+            entries[identifier] = pattern[0];
             continue;
         }
         break;
