@@ -44,7 +44,7 @@ def description: |A lightweight macro system \| v<version>|
 > [!NOTE]
 > Following the C convention, a backslash (`\`) may be used to escape a whole bunch of characters within snippet literals. Outside of snippets, however, such as within circumscribed files, special backslash handling could introduce incompatibilites with the rest of the source.
 >
-> Since `<` is the only specially-handled sequence within circumscribed sources, one may wish to escape it. To do, given the lack of backslash-escapes, we recommend: Not escaping it at all. Instead, embrace the replacement logic:
+> Since `<` is the only specially-handled sequence within circumscribed sources, one may wish to escape it. To do so, given the lack of backslash-escapes, we recommend _not escaping it at all_. Instead, embrace the replacement logic:
 >
 > ```circumscribe
 > # <math-homework>.txt
@@ -65,7 +65,7 @@ The behavior of circumscribe may be configured through the `circumscribe.json` c
         // to, defaults to pwd
         "build": "./build",
         // The glob patterns to ignore when substituting. If 'mirror'
-        // is enabled, matching files aren't be copied either.
+        // is enabled, ignored paths aren't copied either.
         "ignore": ["..."]
     },
     // Whether to copy uncircumscribed files
