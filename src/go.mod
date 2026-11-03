@@ -1,0 +1,3 @@
+module circumscribe
+
+go 1.26.4
