@@ -3,6 +3,7 @@ package source
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -32,7 +33,14 @@ type Source struct {
 
 type Diagnostic struct {
 	Message string
-	Excerpt Excerpt
+	Excerpt *Excerpt
+}
+
+func Diagnose(message string, excerpt Excerpt) Diagnostic {
+	return Diagnostic{
+		Message: message,
+		Excerpt: &excerpt,
+	}
 }
 
 func New(name string, content string) Reader {
@@ -117,6 +125,46 @@ func (self Reader) PointExcerpt() Excerpt {
 	}
 }
 
+func (self *Reader) ReadIdentifier() (string, error) {
+	if self.SkipWhitespace() {
+		var buffer strings.Builder
+		for self.CanRead() {
+			c := self.Peek()
+			if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '\'' || c == '_' {
+				buffer.WriteRune(self.Read())
+				continue
+			}
+			break
+		}
+		if buffer.Len() > 0 {
+			return buffer.String(), nil
+		}
+		return "", Diagnose("Expected an identifier", self.PointExcerpt())
+	}
+	return "", Diagnose("Expected an identifier", self.PointExcerpt())
+}
+
+func (self *Reader) ReadUnicode() (rune, error) {
+	var buffer strings.Builder
+	var position = self.Position()
+	for self.CanRead() {
+		c := self.Peek()
+		if c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F' {
+			buffer.WriteRune(self.Read())
+			continue
+		}
+		break
+	}
+	if buffer.Len() >= 4 {
+		r, err := strconv.ParseInt(buffer.String(), 16, 32)
+		if err == nil {
+			return rune(r), nil
+		}
+		return utf8.RuneError, Diagnose(fmt.Sprintf("Encountered an invalid Unicode literal '%s'", buffer.String()), self.Excerpt(position))
+	}
+	return utf8.RuneError, Diagnose(fmt.Sprintf("Encountered an invalid Unicode literal '%s'", buffer.String()), self.Excerpt(position))
+}
+
 func (self *Reader) ReadOnly(sequence string) bool {
 	if self.IsAt(sequence) {
 		self.ReadMany(utf8.RuneCountInString(sequence))
@@ -165,6 +213,13 @@ func (self *Reader) SkipWhitespace() bool {
 		return true
 	}
 	return false
+}
+
+func (self *Reader) Backtrack(position Position) *Reader {
+	self.position = position.absolute
+	self.column = position.column
+	self.line = position.line
+	return self
 }
 
 func (self Reader) CanRead() bool {
@@ -271,14 +326,17 @@ func (self Diagnostic) Error() string {
 	return fmt.Sprintf("%s\n%s %s", self.Excerpt.Render(), self.Excerpt, self.Message)
 }
 
-func (self Excerpt) Union(interval [2]Position) Excerpt {
-	return Excerpt{
-		source: self.source,
-		interval: [2]Position{
-			self.interval[0].min(interval[0]),
-			self.interval[1].max(interval[1]),
-		},
+func (self Excerpt) Union(other Excerpt) Excerpt {
+	if self.source == other.source {
+		return Excerpt{
+			source: self.source,
+			interval: [2]Position{
+				self.interval[0].min(other.interval[0]),
+				self.interval[1].max(other.interval[1]),
+			},
+		}
 	}
+	panic("self.source == other.source")
 }
 
 func (self Excerpt) Expand(position Position) Excerpt {

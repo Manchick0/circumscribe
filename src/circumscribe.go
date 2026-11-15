@@ -1,8 +1,10 @@
 package main
 
 import (
-	"circumscribe/expression"
+	"circumscribe/env"
+	"circumscribe/expr"
 	"circumscribe/parser"
+	"circumscribe/pat"
 	"circumscribe/source"
 	"errors"
 	"fmt"
@@ -90,19 +92,19 @@ func main() {
 						return cwd, err
 					}()
 					if err == nil {
-						environment, err := initEnvironment(flags)
+						envm, envp, err := initEnvironment(flags)
 						if err == nil {
 							stat, err := os.Stat(path)
 							if err == nil {
 								if stat.IsDir() {
-									err := substituteDir(path, environment, flags)
+									err := substituteDir(path, envm, envp, flags)
 									if err == nil {
 										os.Exit(0)
 									}
 									fmt.Fprintln(os.Stderr, err)
 									os.Exit(1)
 								}
-								err := substituteFile(path, environment, flags)
+								err := substituteFile(path, envm, envp, flags)
 								if err == nil {
 									os.Exit(0)
 								}
@@ -120,14 +122,14 @@ func main() {
 				}
 			}
 			if options[0] == "evaluate" {
-				environment, diagnostic := initEnvironment(flags)
+				envm, envp, diagnostic := initEnvironment(flags)
 				if diagnostic == nil {
 					reader := source.New("evaluate", options[1])
-					expr, diagnostic := parser.ReadExpression(&reader)
+					expression, diagnostic := parser.ReadExpression(&reader, parser.All)
 					if diagnostic == nil {
-						folded, _, diagnostic := expr.Fold(environment, expression.Branch{})
+						folded, _, diagnostic := expr.Fold(expression, envm, envp, env.Branch[expr.Macro]{})
 						if diagnostic == nil {
-							snippet, diagnostic := folded.Evaluate(environment)
+							snippet, diagnostic := expr.Evaluate(folded, envm, envp)
 							if diagnostic == nil {
 								fmt.Println(snippet)
 								os.Exit(0)
@@ -145,14 +147,14 @@ func main() {
 				os.Exit(1)
 			}
 			if options[0] == "infer" {
-				environment, diagnostic := initEnvironment(flags)
+				envm, envp, diagnostic := initEnvironment(flags)
 				if diagnostic == nil {
 					reader := source.New("evaluate", options[1])
-					expr, diagnostic := parser.ReadExpression(&reader)
+					expression, diagnostic := parser.ReadExpression(&reader, parser.All)
 					if diagnostic == nil {
-						_, pattern, diagnostic := expr.Fold(environment, expression.Branch{})
+						_, pattern, diagnostic := expr.Fold(expression, envm, envp, env.Branch[expr.Macro]{})
 						if diagnostic == nil {
-							fmt.Println(pattern.Source)
+							fmt.Println(pattern)
 							os.Exit(0)
 						}
 						fmt.Fprintln(os.Stderr, diagnostic)
@@ -184,7 +186,7 @@ func main() {
 // If neither [-o <path>] nor [--output <path>] were provided
 // as CLI flags, the substitution is printed to the stdout.
 // Otherwise, it is written to the provided path.
-func substituteFile(path string, environment expression.Environment, flags Flags) error {
+func substituteFile(path string, envm env.Environment[expr.Macro], envp env.Environment[pat.Pattern], flags Flags) error {
 	cwd, err := os.Getwd()
 	if err == nil {
 		// The name used for the reader
@@ -194,7 +196,7 @@ func substituteFile(path string, environment expression.Environment, flags Flags
 		if err == nil {
 			content, err := os.ReadFile(path)
 			if err == nil {
-				s10n, err := substitute(name, string(content), environment)
+				s10n, err := substitute(name, string(content), envm, envp)
 				if err == nil {
 					// If neither [-o <path>] nor [--output <path>]
 					// was provided, write to the stdout by default.
@@ -214,7 +216,7 @@ func substituteFile(path string, environment expression.Environment, flags Flags
 	return err
 }
 
-func substituteDir(path string, environment expression.Environment, flags Flags) error {
+func substituteDir(path string, envm env.Environment[expr.Macro], envp env.Environment[pat.Pattern], flags Flags) error {
 	return filepath.WalkDir(path, func(child string, dirent fs.DirEntry, err error) error {
 		mode := dirent.Type()
 		if mode.IsRegular() {
@@ -231,7 +233,7 @@ func substituteDir(path string, environment expression.Environment, flags Flags)
 						if submatch != nil {
 							err := os.MkdirAll(sibling, 0755)
 							if err == nil {
-								s10n, err := substitute(rel, string(content), environment)
+								s10n, err := substitute(rel, string(content), envm, envp)
 								if err == nil {
 									normalized := fmt.Sprintf("%s.%s", submatch[1], submatch[2])
 									return os.WriteFile(filepath.Join(sibling, normalized), []byte(s10n), 0644)
@@ -258,7 +260,7 @@ func substituteDir(path string, environment expression.Environment, flags Flags)
 					// entry is circumscribed.
 					submatch := Circumscribed.FindStringSubmatch(entry)
 					if submatch != nil {
-						s10n, err := substitute(rel, string(content), environment)
+						s10n, err := substitute(rel, string(content), envm, envp)
 						if err == nil {
 							normalized := fmt.Sprintf("%s.%s", submatch[1], submatch[2])
 							return os.WriteFile(filepath.Join(parent, normalized), []byte(s10n), 0644)
@@ -284,25 +286,22 @@ func substituteDir(path string, environment expression.Environment, flags Flags)
 // For better user experience, it is desired to always
 // provide a path _relative to the cwd_ as the name
 // argument.
-func substitute(name string, content string, environment expression.Environment) (string, error) {
+func substitute(name string, content string, envm env.Environment[expr.Macro], envp env.Environment[pat.Pattern]) (string, error) {
 	var reader source.Reader = source.New(name, content)
 	var buffer strings.Builder
 	for reader.CanRead() {
 		if reader.ReadOnly("<") {
-			body, diagnostic := parser.ReadExpression(&reader)
+			body, diagnostic := parser.ReadExpression(&reader, parser.All)
 			if diagnostic == nil {
-				folded, _, diagnostic := body.Fold(environment, expression.Branch{})
+				folded, _, diagnostic := expr.Fold(body, envm, envp, env.Branch[expr.Macro]{})
 				if diagnostic == nil {
-					snippet, diagnostic := folded.Evaluate(environment)
+					snippet, diagnostic := expr.Evaluate(folded, envm, envp)
 					if diagnostic == nil {
 						buffer.WriteString(snippet)
 						if reader.ReadMeaningful(">") {
 							continue
 						}
-						return buffer.String(), source.Diagnostic{
-							Message: "Expected '>'",
-							Excerpt: reader.PointExcerpt(),
-						}
+						return buffer.String(), source.Diagnose("Expected '>'", reader.PointExcerpt())
 					}
 					return buffer.String(), diagnostic
 				}
@@ -315,69 +314,130 @@ func substitute(name string, content string, environment expression.Environment)
 	return buffer.String(), nil
 }
 
-func initEnvironment(flags Flags) (expression.Environment, error) {
+// Initialize the circumscribe environment
+// from the appropriate context.
+// ---
+func initEnvironment(flags Flags) (env.Environment[expr.Macro], env.Environment[pat.Pattern], error) {
 	cwd, err := os.Getwd()
 	if err == nil {
 		context, err := flags.ResolveContext()
 		if err == nil {
-			content, err := os.ReadFile(context)
-			if err == nil {
-				name, err := filepath.Rel(cwd, context)
-				if err == nil {
-					reader := source.New(name, string(content))
-					entries, diagnostic := func() (map[string]expression.Macro, error) {
-						buffer := map[string]expression.Macro{}
-						for {
-							entry, diagnostic := parser.ReadDefinition(&reader)
-							if diagnostic == nil {
-								if entry != nil {
-									buffer[entry.Name()] = entry
-									continue
+			envm, envp, diagnostic := func() (env.Layer[expr.Macro], env.Layer[pat.Pattern], error) {
+				envm := env.Layer[expr.Macro]{}
+				envp := env.Layer[pat.Pattern]{}
+				for _, ctx := range context {
+					content, err := os.ReadFile(ctx)
+					if err == nil {
+						name, err := filepath.Rel(cwd, ctx)
+						if err == nil {
+							reader := source.New(name, string(content))
+							for {
+								entry, err := parser.ReadDefinition(&reader)
+								if err == nil {
+									if entry == nil {
+										break
+									}
+									if entry, ok := entry.(parser.Macro); ok {
+										if _, ok := envm[entry.Identifier]; ok {
+											return nil, nil, source.Diagnose(fmt.Sprintf("Duplicate definition of '%s'", entry.Identifier), entry.Excerpt)
+										}
+										envm[entry.Identifier] = entry.Macro
+										continue
+									}
+									if entry, ok := entry.(parser.Pattern); ok {
+										if _, ok := envp[entry.Identifier]; ok {
+											return nil, nil, source.Diagnose(fmt.Sprintf("Duplicate definition of '%s'", entry.Identifier), entry.Excerpt)
+										}
+										envp[entry.Identifier] = entry.Pattern
+										continue
+									}
+									panic("entry, ok := entry.(parser.Macro); ok || entry, ok := entry.(parser.Pattern); ok")
 								}
-								return buffer, nil
+								return nil, nil, err
 							}
-							return nil, diagnostic
+							continue
 						}
-					}()
-					if diagnostic == nil {
-						environment := expression.Environment{
-							Root:    nil,
-							Parent:  &expression.Standard,
-							Entries: entries,
-						}
-						environment.Root = &environment
-						for _, entry := range environment.Entries {
-							if macro, ok := entry.(*expression.Source); ok {
-								diagnostic := macro.Fold(environment, expression.Branch{})
-								if diagnostic == nil {
-									continue
-								}
-								return expression.Environment{}, diagnostic
-							}
-							panic("Attempted to fold a non-source macro")
-						}
-						return environment, nil
+						return nil, nil, err
 					}
-					return expression.Environment{}, diagnostic
+					return nil, nil, err
 				}
-				return expression.Environment{}, err
+				return envm, envp, nil
+			}()
+			if diagnostic == nil {
+				stdm, stdp := stdlib()
+				envm, envp := env.Environment[expr.Macro]{
+					Root:    nil,
+					Parent:  &stdm,
+					Entries: envm,
+				}, env.Environment[pat.Pattern]{
+					Root:    nil,
+					Parent:  &stdp,
+					Entries: envp,
+				}
+				envm.Root, envp.Root = &envm, &envp
+				for _, entry := range envp.Entries {
+					_, err := entry.Compile(envp, env.Branch[pat.Pattern]{})
+					if err == nil {
+						continue
+					}
+					return env.Environment[expr.Macro]{}, env.Environment[pat.Pattern]{}, err
+				}
+				for _, entry := range envm.Entries {
+					if macro, ok := entry.(*expr.Source); ok {
+						diagnostic := macro.Fold(envm, envp, env.Branch[expr.Macro]{})
+						if diagnostic == nil {
+							continue
+						}
+						return env.Environment[expr.Macro]{}, env.Environment[pat.Pattern]{}, diagnostic
+					}
+					panic("Attempted to fold a non-source macro")
+				}
+				return envm, envp, nil
 			}
-			return expression.Environment{}, err
+			return env.Environment[expr.Macro]{}, env.Environment[pat.Pattern]{}, diagnostic
 		}
-		return expression.Environment{}, err
+		return env.Environment[expr.Macro]{}, env.Environment[pat.Pattern]{}, err
 	}
-	return expression.Environment{}, err
+	return env.Environment[expr.Macro]{}, env.Environment[pat.Pattern]{}, err
+}
+
+func stdlib() (env.Environment[expr.Macro], env.Environment[pat.Pattern]) {
+	return env.Environment[expr.Macro]{
+			Parent: nil,
+			Root:   nil,
+			Entries: env.Layer[expr.Macro]{
+				"meaningful": expr.StdMeaningful,
+				"reverse":    expr.StdReverse,
+				"length":     expr.StdLength,
+				"head":       expr.StdHead,
+				"tail":       expr.StdTail,
+				"read":       expr.StdRead,
+				"chr":        expr.StdChr,
+				"ord":        expr.StdOrd,
+			},
+		}, env.Environment[pat.Pattern]{
+			Parent: nil,
+			Root:   nil,
+			Entries: env.Layer[pat.Pattern]{
+				"w":       pat.StdW,
+				"e":       pat.StdE,
+				"s":       pat.StdS,
+				"any":     pat.StdAny,
+				"boolean": pat.StdBoolean,
+				"natural": pat.StdNatural,
+			},
+		}
 }
 
 // The CLI flags passed to the circumscribe
 // executable. These are different from
 // options: those are collected separately.
 type Flags struct {
-	output  *string // The output path, or nil if none was given         (substitute)
-	context *string // The content file, or nil if none was given        (evaluate, substitute, init)
-	exclude *string // The exclude pattern, or nil if none was given     (substitute)
-	mirror  bool    // Whether to mirror the rest of the directory       (substitute)
-	force   bool    // Whether to create .circumscribe if one is present (init)
+	output  *string  // The output path, or nil if none was given         (substitute)
+	context []string // The content file(s), empty if none were given     (evaluate, substitute, init)
+	exclude *string  // The exclude pattern, or nil if none was given     (substitute)
+	mirror  bool     // Whether to mirror the rest of the directory       (substitute)
+	force   bool     // Whether to create .circumscribe if one is present (init)
 }
 
 // Compute the context file, containing
@@ -395,8 +455,8 @@ type Flags struct {
 // not exist, a different error is used in favor of the
 // usual 'fs.ErrNotExist', since the existence of the
 // file was never promised in the first place.
-func (self Flags) ResolveContext() (string, error) {
-	if self.context == nil {
+func (self Flags) ResolveContext() ([]string, error) {
+	if len(self.context) == 0 {
 		cwd, err := os.Getwd()
 		if err == nil {
 			path := filepath.Join(cwd, ".circumscribe")
@@ -404,26 +464,29 @@ func (self Flags) ResolveContext() (string, error) {
 			if err == nil {
 				mode := stat.Mode()
 				if mode.IsRegular() {
-					return path, nil
+					return []string{path}, nil
 				}
-				return path, errors.New("circumscribe: The context file must be a regular file")
+				return nil, errors.New("circumscribe: '.circumscribe' in the current working directory isn't a regular file")
 			}
 			if errors.Is(err, fs.ErrNotExist) {
-				return path, errors.New("circumscribe: Could not locate '.circumscribe' in the current working directory. Perhaps 'circumscribe init'?")
+				return nil, errors.New("circumscribe: Could not locate '.circumscribe' in the current working directory. Perhaps 'circumscribe init'?")
 			}
-			return path, err
+			return nil, err
 		}
-		return cwd, err
+		return nil, err
 	}
-	stat, err := os.Stat(*self.context)
-	if err == nil {
-		mode := stat.Mode()
-		if mode.IsRegular() {
-			return *self.context, nil
+	for _, entry := range self.context {
+		stat, err := os.Stat(entry)
+		if err == nil {
+			mode := stat.Mode()
+			if mode.IsRegular() {
+				continue
+			}
+			return nil, fmt.Errorf("circumscribe: '%s', provided as context, must be a regular file", entry)
 		}
-		return *self.context, fmt.Errorf("circumscribe: The context file must be a regular file")
+		return nil, err
 	}
-	return *self.context, err
+	return self.context, nil
 }
 
 func parseArgs(args []string) ([]string, Flags, error) {
@@ -454,13 +517,13 @@ func parseArgs(args []string) ([]string, Flags, error) {
 			if position < len(args) {
 				if filepath.IsAbs(args[position]) {
 					context := filepath.Clean(args[position])
-					flags.context = &context
+					flags.context = append(flags.context, context)
 					continue
 				}
 				cwd, err := os.Getwd()
 				if err == nil {
 					context := filepath.Join(cwd, args[position])
-					flags.context = &context
+					flags.context = append(flags.context, context)
 					continue
 				}
 				return options, flags, err

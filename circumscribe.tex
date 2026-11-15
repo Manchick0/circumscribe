@@ -1,0 +1,373 @@
+\documentclass{article}
+\title{Circumscribe}
+\author{Rudomotkin Ivan}
+\date{November 14, 2026}
+\usepackage{amsmath}
+\renewcommand{\arraystretch}{1.5}
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+
+\section{Introduction}
+
+`Circumscribe' is a general-purpose, language-agnostic macro templating tool.
+Its purpose is recursively finding and subsituting all placeholders within the
+provided file or directory.
+
+\subsection{Substitution}
+
+The \texttt{circumscribe substitute} subcommand is responsible for all substitution.
+
+\section{Language}
+
+Circumscribe features a domain-specific, expression-first, \emph{statically typed}, functional programming language.
+Unlike most general-purpose languages, circumscribe does not have a notion of a
+`type': \emph{The only type in circumscribe is a string}. Circumscribe was designed
+with this constraint in mind.
+
+In order to compensate for the lack of `types', circumscribe offers a notion of \emph{patterns},
+a way to denote a specific formal language. Patterns completely replace the type system of circumscribe.
+
+A circumscribe source file may contain single-line comments beginning with a hash sign. A comment may appear anywhere in
+the source file. The language is whitespace-insensitive. It's a convention to end a circumscribe source file in \texttt{.circumscribe}.
+
+\subsection{Snippet}
+
+A \emph{snippet} is a piece of text. It is analogous to a string, and both terms are often used interchangeably.
+A snippet is the only type in circumscribe.
+
+\subsection{Macro}
+
+A \emph{macro} is a single reusable piece of code that inevitably produces a \emph{snippet}. It is analogous to a function,
+and both terms are often used interchangeably. A macro is defined with the \texttt{def} keyword at the topmost level of
+a circumscribe source file.
+
+\begin{center}
+    \verb|def <name>(<name>: <pattern>, ...) -> <return>: <expression>|
+\end{center}
+
+A macro may take in an arbitrary number of parameters in the form of \verb|<name>: <pattern>|.
+The pattern is optional and may be omitted, in which case it defaults to \texttt{any}.
+The arguments passed to the macro may be referenced by their name.
+
+
+\begin{center}
+    \verb/def greet(name): |Hello, <name>!|/
+\end{center}
+
+Circumscribe does not differentiate between macros and ``variables''.
+A ``variable'' is merely a nullary macro. However, the parameter list
+is itself optional and may too be omitted:
+
+\begin{center}
+    \verb/def greeting: greet(|Marie|)/
+\end{center}
+
+A macro may have its return pattern annotated. This, however, isn't mandatory.
+As long as the macro doesn't recurse, circumscribe is capable of inferring the
+return pattern manually, as observed in above examples.
+
+Circumscribe differentiates between pure and impure macros. A macro is considered
+impure if its body refers to an impure macro, and pure until proven otherwise.
+
+\subsection{Expression}
+
+An expression is a single piece of code that may be evaluated to a \emph{snippet}.
+Every expression \textbf{must} evaluate to a snippet. Because of this promise, all
+control-flow happens in terms of expressions.
+
+\subsubsection{Literal}
+
+A \texttt{literal} represents a piece of literal text, enclosed in a pair of vertical bars.
+Everything in-between the delimiters is taken literally from the source.
+A literal may span across multiple lines.
+
+\begin{center}
+    \verb/|Hello, Marie!|/
+\end{center}
+
+A literal may include escape sequences. An escape sequence is denoted by a backslash, followed
+by an escape character.
+
+\begin{center}
+\begin{tabular}{ c|l r }
+    \hline
+    Escape Sequence & Replacement & Unicode \\[1ex]
+    \hline
+    \verb/\|/ & Vertical Bar    & \texttt{u007C} \\ 
+    \verb|\<| & Less Than       & \texttt{u003C} \\
+    \verb|\\| & Backslash       & \texttt{u005C} \\
+    \verb|\n| & New Line        & \texttt{u000A} \\ 
+    \verb|\r| & Carriage Return & \texttt{u000D} \\ 
+    \verb|\t| & Tabulation      & \texttt{u0009} \\ 
+    \verb|\b| & Backspace       & \texttt{u0008} \\
+\end{tabular}
+\end{center}
+
+Alternatively, an escape sequence may be of form \verb|\uXXXX|, in which case it is substituted for
+the literal Unicode point.
+
+\begin{center}
+    \verb/|Hello, \u004D\u0061\u0072\u0069\u0065!|/
+\end{center}
+
+A literal may contain placeholders, in the form of \texttt{<(expression)>}. When the literal is evaluated, all
+placeholders are subtituted and concatenated to the rest of the literal. This is commonly referred to as
+\emph{snippet interpolation}.
+
+\begin{center}
+    \verb/|Hello, <name>!|/
+\end{center}
+
+The inferred pattern of a \texttt{literal} is the product pattern of all constituents of the literal.
+
+\subsubsection{Application}
+
+An \texttt{application} represents a single application of a macro.
+
+\begin{center}
+    \texttt{<name>($arg_0$, $arg_1$, \dots, $arg_n$)}
+\end{center}
+
+In order to compensate for the lack of variables, circumscribe has a notion
+of a \emph{bare} application. An application is considered bare if the argument
+list is omitted. A \emph{bare} application is only possible on a \emph{pure},
+\emph{nullary} macro.
+
+\begin{center}
+    \verb/|Hello, <name>!|/
+\end{center}
+
+The inferred pattern of an \texttt{application} is the return pattern of the macro.
+
+\subsubsection{If}
+
+An \texttt{if} decides on a branch based on a condition. The condition must satisfy the standard
+\texttt{boolean} pattern. Since all expressions must evaluate to a snippet, an else branch
+is mandatory.
+
+\begin{center}
+    \verb|if <condition>: <then> else <else>|
+\end{center}
+
+The inferred pattern of an \texttt{if} is the sum pattern of both branches.
+
+\subsubsection{Match}
+
+A \texttt{match} matches a source against a \emph{grammar}, then evaluates
+the corresponding branch. If the source could successfully match the grammar,
+the named placeholders may be referenced in the body of the expression. Since all expressions must evaluate to a snippet, an else branch
+is mandatory.
+
+\begin{center}
+    \verb|match <grammar> in <source>: <then> else <else>|
+\end{center}
+
+The inferred pattern of a \texttt{match} is the sum pattern of both branches.
+
+\subsubsection{Compare}
+
+A \texttt{compare} determines whether the snippet produced by the left-hand side of the expressions
+is identical to the one produced by the right-hand side of the expression.
+
+\begin{center}
+    \verb|<left> = <right>|
+\end{center}
+
+Due to circumscribe being a functional language and having no notion of an `assignment',
+we may use the \texttt{=} symbol directly. The inferred pattern of a \texttt{compare} is the
+standard \texttt{boolean} pattern.
+
+\subsubsection{And}
+
+An \texttt{and} represents the logical conjunction on two expressions. Both expressions must
+satisfy the standard \texttt{boolean} pattern. If the left-hand side of the expression
+evaluates to \texttt{false}, the whole expression short-circuits immediately.
+
+\begin{center}
+    \verb|<left> and <right>|
+\end{center}
+
+The inferred pattern of an \texttt{and} is the standard \texttt{boolean} pattern.
+
+\subsubsection{Or}
+
+An \texttt{or} represents the logical disjunction on two expressions. Both expressions must
+satisfy the standard \texttt{boolean} pattern. If the left-hand side of the expression
+evaluates to \texttt{true}, the whole expression short-circuits immediately.
+
+\begin{center}
+    \verb|<left> or <right>|
+\end{center}
+
+The inferred pattern of an \texttt{or} is the standard \texttt{boolean} pattern.
+
+\subsubsection{Not}
+
+A \texttt{not} represents the logical negation on an expression. The expression must satisfy 
+the standard \texttt{boolean} pattern.
+
+\begin{center}
+    \verb|not <expression>|
+\end{center}
+
+The inferred pattern of a \texttt{not} is the standard \texttt{boolean} pattern.
+
+\subsection{Pattern}
+
+A \texttt{pattern} represents a single formal language. It replaces the notion of a
+`type' and serves an identical duty. In order for a pattern to accept a different one,
+the latter has to be a strict subset of the former. We say the former \emph{satisfies}
+the latter.
+
+\[L_0\left(a\right) \subseteq L_1\left(b\right) \iff a\text{ satisfies }b\]
+
+A pattern may be aliased with the \texttt{pat} keyword at the topmost level of a
+circumscribe source file.
+
+\begin{center}
+    \verb/pat <name>: <pattern>/
+\end{center}
+
+A pattern may not recurse. A recursive formal language is no longer regular, and
+no meaningful operations may be formed on context-sensitive languages.
+
+\begin{center}
+    \verb/pat balanced: |(| * (balanced + boolean) |)|/
+\end{center}
+
+We say a pattern is \emph{nullable} if it accepts an empty snippet.
+
+\subsubsection{Literal}
+
+A literal accepts only a single literal snippet. A literal is enclosed in a pair
+of vertical bars, visually mirroring the syntax of the literal expression.
+
+\begin{center}
+    \verb/|Hello, Marie!|/
+\end{center}
+
+A literal may contain escape sequences, similarly to the literal expression.
+
+\begin{center}
+\begin{tabular}{ c|l r }
+    \hline
+    Escape Sequence & Replacement & Unicode \\[1ex]
+    \hline
+    \verb/\|/ & Vertical Bar    & \texttt{u007C} \\ 
+    \verb|\\| & Backslash       & \texttt{u005C} \\
+    \verb|\n| & New Line        & \texttt{u000A} \\ 
+    \verb|\r| & Carriage Return & \texttt{u000D} \\ 
+    \verb|\t| & Tabulation      & \texttt{u0009} \\ 
+    \verb|\b| & Backspace       & \texttt{u0008} \\
+\end{tabular}
+\end{center}
+
+It may, however, not contain placeholders. Instead, patterns may be concatenated
+with multiplication:
+
+\begin{center}
+    \verb/|Hello, | * any * |!|/
+\end{center}
+
+\subsubsection{Interval}
+
+An interval accepts a single character anywhere in-between its bounds, inclusively.
+Two literals may be converted into an interval with a dash, as long as each one
+satisfies the \verb/|\u0000|-|\u10FFFF|/ pattern.
+
+\begin{center}
+    \verb/|0|-|9|/
+\end{center}
+
+\subsubsection{Sum}
+
+A \texttt{sum} represents a disjunction of two formal languages. Sum is analogous to
+an alternation in the usual regular expression sense.
+
+\[a + b = L\left(a\right) \cup L\left(b\right)\]
+
+\subsubsection{Product}
+
+A \texttt{product} represents a cartesian product of two formal languages. Product is analogous
+to an juxtaposition in the usual regular expression sense.
+
+\[a * b = L\left(a\right) \times L\left(b\right)\]
+
+\subsubsection{Ellipsis}
+
+An \texttt{ellipsis} represents an arbitrary repetition of a formal language.
+Ellipsis is analogous to a Kleene's star in the usual regular expression sense.
+The subpattern may not be nullable.
+
+\[a... = L\left(a\right)^{*}\]
+
+\subsubsection{Intersection}
+
+An \texttt{intersection} represents the intersection of two formal languages.
+Intersection has no counterpart in the usual regular expression sense.
+
+\[a \text{ \& } b = L\left(a\right) \cap L\left(b\right)\]
+
+\subsubsection{Complement}
+
+A \texttt{complement} represents the negation of a formal languages.
+Complement has no counterpart in the usual regular expression sense.
+
+\subsubsection{Reference}
+
+A \texttt{reference} refers to a pattern alias, and is identical to the aliased pattern.
+
+
+\begin{center}
+    \verb/def foo() -> boolean: |true|/
+\end{center}
+
+\subsection{Grammar}
+
+A grammar describes the structure of a snippet. A grammar visually resembles a literal expression,
+and may include named placeholders. A grammar may be \emph{matched} against a snippet, capturing
+the content of the placeholders.
+
+A grammar is more commonly known as a \emph{pattern}, and the process of matching a grammar
+as \emph{pattern matching}. However, circumscribe differentiates between the two terms.
+
+\begin{center}
+    \verb/|Hello, <name: any>!|/
+\end{center}
+
+A placeholder needn't be named. It is, however, often desired to capture a part of the snippet. The snippet is matched
+against the grammar greedily, with backtracking.
+
+\begin{center}
+    \verb/|Hello,<s...><name: any>!|/
+\end{center}
+
+A grammar is identical to the product pattern of all its literal constituents
+and placeholders. Any pattern is a grammar, though a grammar isn't a pattern. In case your grammar consists of a
+single pattern, you may write the pattern directly:
+
+\begin{center}
+    \[\verb/|<boolean>|/ \cong \verb/boolean/\] 
+\end{center}
+
+A grammar may contain escape sequences, similarly to the literal expression.
+
+\begin{center}
+\begin{tabular}{ c|l r }
+    \hline
+    Escape Sequence & Replacement & Unicode \\[1ex]
+    \hline
+    \verb/\|/ & Vertical Bar    & \texttt{u007C} \\ 
+    \verb|\<| & Less Than       & \texttt{u003C} \\
+    \verb|\\| & Backslash       & \texttt{u005C} \\
+    \verb|\n| & New Line        & \texttt{u000A} \\ 
+    \verb|\r| & Carriage Return & \texttt{u000D} \\ 
+    \verb|\t| & Tabulation      & \texttt{u0009} \\ 
+    \verb|\b| & Backspace       & \texttt{u0008} \\
+\end{tabular}
+\end{center}
+
+\end{document}

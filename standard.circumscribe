@@ -1,0 +1,232 @@
+#
+# standard.circumscribe
+# ---
+# The standard library of circumscribe.
+#
+
+#
+# w
+# ---
+# An alias for any character in the Unicode
+# range from 'u0000' to 'u10FFFF'.
+#
+pat w: |\u0000|-|\u10FFFF|
+
+#
+# dot
+# ---
+# A pattern representing any character in the
+# Unicode range that isn't a newline (u000A).
+#
+# The dot pattern mirrors the '.' syntax in a
+# regular expression.
+#
+pat dot: w & !|\n|
+
+#
+# e
+# ---
+# An alias for the empty pattern '||'.
+#
+# It's often desired to construct a pattern in
+# form of (x + ||), mirroring the '?' operator
+# in a regular expression: (x + e)
+#
+# The empty pattern is often referred to as an
+# *epsilon transition* in the formal language
+# theory, hence the name.
+#
+pat e: ||
+
+#
+# any
+# ---
+# A pattern representing any possible snippet.
+#
+# The 'any' pattern is the default pattern for
+# an un-annotated macro parameter. Please always
+# consider a more suitable pattern for you needs
+# before defaulting to any.
+#
+pat any: w...
+
+#
+# s
+# ---
+# A pattern matching a single ASCII
+# whitespace character.
+#
+# It's often desired to include an 's'
+# pattern in place of a literal space
+# in a grammar:
+#
+# match |Hello,<s...><name: any>!| in src:
+#     ...
+#
+pat s: |\u0009|-|\u000D| + |\u0020|
+
+#
+# us
+# ---
+# A pattern matching a single Unicode
+# whitespace character.
+#
+pat us: s + |\u0085| + |\u00A0| + |\u1680| + |\u2000|-|\u200A| + |\u2028|-|\u2029| + |\u202F| + |\u205F| + |\u3000|
+
+#
+# boolean
+# ---
+# A pattern representing the two boolean
+# literals, 'true' and 'false'.
+#
+# The boolean pattern is used extensively
+# throughout Circumscribe. A snippet that
+# satisfies the boolean pattern may appear,
+# among others, in the condition of an 'if'
+# expression.
+#
+pat boolean: |true| + |false|
+
+#
+# natural
+# ---
+# A pattern representing a natural number,
+# including the literal zero.
+#
+# A snippet that satisfies the natural pattern
+# may appear in arithmetic operations:
+#
+# (|5| * |5|) + (|100| / |10) - |1|
+#
+pat natural: |0| + (|1|-|9| * |0|-|9|...)
+
+#
+# never
+# ---
+# A pattern representing an empty set of
+# languages. Not a single language is
+# accepted by the never pattern.
+#
+pat never: w & e
+
+#
+# ord(w)
+# ---
+# Compute the Unicode codepoint of
+# the given character.
+#
+def ord(w: w) -> natural:
+    ord'(w)
+
+#
+# chr(point)
+# ---
+# Compute the Unicode character for
+# the given codepoint.
+#
+def chr(point: natural) -> w:
+    chr'(point)
+
+#
+# head(source)
+# ---
+# Returns the firstmost character
+# of the given source:
+#
+# head(|Hello, World!|) == |H|
+#
+def head(source: any) -> w:
+    head'(source)
+
+#
+# tail(source)
+# ---
+# Returns the taiil of the given
+# source:
+#
+# head(|Hello, World!|) == |ello, World!|
+#
+def tail(source: any) -> any:
+    tail'(source)
+
+#
+# trim(source)
+# ---
+# Trim the trailing and leading whitespace
+# from the given source.
+#
+def trim(source: any) -> any:
+    trim'(source)
+
+#
+# length(source)
+# ---
+# Compute the length of the given source.
+#
+def length(source: any) -> natural:
+    length'(source)
+
+#
+# reverse(source)
+# ---
+# Reverse the given source.
+#
+def reverse(source: any) -> any:
+    reverse'(source)
+
+#
+# lowercase(source)
+# ---
+# Compute a snippet identical to the given
+# source, with all letters replaced with
+# their lowercase counterparts.
+#
+def lowercase(source: any) -> any:
+    lowercase'(source)
+
+#
+# uppercase(source)
+# ---
+# Compute a snippet identical to the given
+# source, with all letters replaced with
+# their uppercase counterparts.
+#
+def uppercase(source: any) -> any:
+    uppercase'(source)
+
+#
+# contains(source, snippet)
+# ---
+# Determine whether the given snippet
+# appears in the given source.
+#
+def contains(source: any, snippet: any) -> boolean:
+    contains'(source, snippet)
+
+#
+# read(path)
+# ---
+# Read the content of the given file.
+# 
+def read(path: any) -> any:
+    read'(path)
+
+#
+# env(name)
+# ---
+# Return the value of the given environment
+# variable, or an empty snippet if unset. 
+#
+def env(name: any) -> any:
+    env'(name)
+
+#
+# meaningful(source)
+# ---
+# Determine whether the given source is
+# non-empty.
+#
+def meaningful(source: any) -> boolean:
+    if length(source) == |0|:
+        |false|
+    else |true|
