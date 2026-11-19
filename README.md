@@ -6,7 +6,7 @@ order for a file to be considered circumscribed, its name has to be surrounded w
 a set of angle brackets, visually written around, hence the name:
 
 ```bash
-<foo>.txt
+<foo>.c
 ```
 
 A circumscribed file may contain placeholders in the form of `<expression>`.
