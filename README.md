@@ -15,6 +15,7 @@ rest of the source:
 
 ```c
 // <foo>.c
+#include <stdio.h>
 
 int main(void) {
     printf("<greeting>");
@@ -38,7 +39,7 @@ def greet(name):
 ## Language
 
 Circumscribe features a functional, domain-specific, statically-typed macro
-language, dually named circumscribe. With circunscribe being a macro tool,
+language, dually named circumscribe. With circumscribe being a macro tool,
 the language was designed with an interesting constraint in-mind: _Everything
 is a string_.
 
