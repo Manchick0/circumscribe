@@ -1,0 +1,53 @@
+#
+# type.circumscribe
+# ---
+# A collection of typesetting macros:
+# https://oeis.org/wiki/List_of_LaTeX_mathematical_symbols
+#
+
+def pm: |±|
+
+def N: |ℕ|
+def Z: |ℤ|
+def Q: |ℚ|
+def R: |ℝ|
+def C: |ℂ|
+
+def cup: |\u222A|
+  
+def cap: |\u2229|
+
+def subset: |\u2282|
+def subseteq: |\u2286|
+  
+def supset: |\u2283|
+def supseteq: |\u2287|
+
+def neq: |≠|
+
+def empty: |\u2205|
+
+def in: |∈|
+def notin: |∉|
+def ni: |∋|
+
+def lfloor: |⌊|
+def rfloor: |⌋|
+
+def cong: |≅|
+
+# Logic
+def exists: |∃|
+def nexists: |∄|
+def forall: |∀|
+
+# Greek
+
+def alpha: |α|
+def Alpha: |Α|
+
+def beta: |β|
+def Beta: |Β|
+  
+def epsilon: |ε|
+def Epsilon: |Ε|
