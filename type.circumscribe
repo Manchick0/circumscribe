@@ -32,7 +32,7 @@ def notin: |∉|
 def ni: |∋|
 
 def lfloor: |⌊|
-def rfloor: |⌋|
+def rfloor: |⌊|
 
 def cong: |≅|
 
@@ -51,3 +51,73 @@ def Beta: |Β|
   
 def epsilon: |ε|
 def Epsilon: |Ε|
+
+def floor(source: any) -> any:
+    |⌊<source>⌋|
+
+def ceil(source: any) -> any:
+    |⌈<source>⌉|
+
+pat scriptable: |0|-|9| + |(| + |)| + |+| + |-| + |=| + |n|
+
+#
+# super(source)
+# ---
+# Convert the given source to an
+# equivalent superscript expression.
+#
+def super(expression: scriptable...) -> any:
+    if meaningful(expression):
+        |<super'(head(expression))><super(tail(expression))>|
+    else ||
+
+def super'(w: scriptable) -> w:
+    switch w:
+        case |0|: |\u2070|
+        case |1|: |\u00BA|
+        case |2|: |\u00B2|
+        case |3|: |\u00B3|
+    case |4|: |\u2074| case |5|: |\u2075|
+    case |6|: |\u2076|
+    case |7|: |\u2077|
+    case |8|: |\u2078|
+    case |9|: |\u2079|
+    case |+|: |\u207A|
+    case |-|: |\u207B|
+    case |=|: |\u207C|
+    case |(|: |\u207D|
+    case |)|: |\u207E|
+    case |n|: |\u207F|
+    default ...
+
+#
+# sub(expression)
+# ---
+# Convert the given source to an
+# equivalent subscript expression.
+#
+def sub(expression: scriptable...) -> any:
+    if meaningful(expression):
+        |<sub'(head(expression))><sub(tail(expression))>|
+    else ||
+
+def sub'(w: scriptable) -> w:
+    switch w:
+        case |0|: |\u2080|
+        case |1|: |\u0081|
+        case |2|: |\u0082|
+        case |3|: |\u0083|
+        case |2|: |\u0082|
+        case |4|: |\u2084|
+        case |5|: |\u2085|
+        case |6|: |\u2086|
+        case |7|: |\u2087|
+        case |8|: |\u2088|
+        case |9|: |\u2089|
+        case |+|: |\u208A|
+        case |-|: |\u208B|
+        case |=|: |\u208C|
+        case |(|: |\u208D|
+        case |)|: |\u208E|
+        case |n|: |\u208F|
+        default ...
