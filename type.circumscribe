@@ -28,17 +28,12 @@ def neq: |≠|
 def empty: |\u2205|
 
 def in: |∈|
-def notin: |∉|
 def ni: |∋|
-
-def lfloor: |⌊|
-def rfloor: |⌊|
 
 def cong: |≅|
 
 # Logic
 def exists: |∃|
-def nexists: |∄|
 def forall: |∀|
 
 # Greek
@@ -52,13 +47,53 @@ def Beta: |Β|
 def epsilon: |ε|
 def Epsilon: |Ε|
 
-def floor(source: any) -> any:
-    |⌊<source>⌋|
+pat negatable: |∈| + |∃|
 
+def not(expression: any) -> any:
+    |¬<expression>|
+
+#
+# neg(symbol)
+# ---
+# Compute the logical negation
+# of given symbol.
+#
+def neg(symbol: negatable) -> w:
+    switch symbol:
+        |∈|: |∉|
+        |∃|: |∄|
+        default ...
+
+#
+# floor(expression)
+# ---
+# Surround the given expression
+# in floor brackets.
+#
+# floor(|f(x)|) # ⌊f(x)⌋
+#
+def floor(expression: any) -> any:
+    |⌊<expression>⌋|
+
+#
+# ceil(expression)
+# ---
+# Surround the given expression
+# in ceil brackets:
+#
+# ceil(|f(x)|) # ⌈f(x)⌉ 
+#
 def ceil(source: any) -> any:
-    |⌈<source>⌉|
+    |⌈<expression>⌉|
 
-pat scriptable: |0|-|9| + |(| + |)| + |+| + |-| + |=| + |n|
+#
+# script
+# ---
+# A single character that has a
+# corresponding sub- and superscript
+# equivalent in Unicode.
+#
+pat script: |0|-|9| + |(| + |)| + |+| + |-| + |=| + |n|
 
 #
 # super(source)
@@ -66,29 +101,30 @@ pat scriptable: |0|-|9| + |(| + |)| + |+| + |-| + |=| + |n|
 # Convert the given source to an
 # equivalent superscript expression.
 #
-def super(expression: scriptable...) -> any:
+def super(expression: (script + s)...) -> any:
     if meaningful(expression):
         |<super'(head(expression))><super(tail(expression))>|
     else ||
 
-def super'(w: scriptable) -> w:
+def super'(w: script + s) -> w:
     switch w:
         case |0|: |\u2070|
         case |1|: |\u00BA|
         case |2|: |\u00B2|
         case |3|: |\u00B3|
-    case |4|: |\u2074| case |5|: |\u2075|
-    case |6|: |\u2076|
-    case |7|: |\u2077|
-    case |8|: |\u2078|
-    case |9|: |\u2079|
-    case |+|: |\u207A|
-    case |-|: |\u207B|
-    case |=|: |\u207C|
-    case |(|: |\u207D|
-    case |)|: |\u207E|
-    case |n|: |\u207F|
-    default ...
+        case |4|: |\u2074|
+        case |5|: |\u2075|
+        case |6|: |\u2076|
+        case |7|: |\u2077|
+        case |8|: |\u2078|
+        case |9|: |\u2079|
+        case |+|: |\u207A|
+        case |-|: |\u207B|
+        case |=|: |\u207C|
+        case |(|: |\u207D|
+        case |)|: |\u207E|
+        case |n|: |\u207F|
+        default w
 
 #
 # sub(expression)
@@ -96,12 +132,12 @@ def super'(w: scriptable) -> w:
 # Convert the given source to an
 # equivalent subscript expression.
 #
-def sub(expression: scriptable...) -> any:
+def sub(expression: (script + s)...) -> any:
     if meaningful(expression):
         |<sub'(head(expression))><sub(tail(expression))>|
     else ||
 
-def sub'(w: scriptable) -> w:
+def sub'(w: script + s) -> w:
     switch w:
         case |0|: |\u2080|
         case |1|: |\u0081|
@@ -120,4 +156,4 @@ def sub'(w: scriptable) -> w:
         case |(|: |\u208D|
         case |)|: |\u208E|
         case |n|: |\u208F|
-        default ...
+        default w
