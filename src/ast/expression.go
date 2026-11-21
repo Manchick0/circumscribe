@@ -345,16 +345,22 @@ func Compile(self Expression, envm env.Environment[Macro], envp env.Environment[
 		return pat.Literal(self.Literal), nil
 	}
 	if self, ok := self.(Snippet); ok {
-		buffer := pat.StdE // Multiplicative Identity
-		for _, child := range self.Children {
-			pattern, err := Compile(child, envm, envp, branch)
+		if len(self.Children) > 0 {
+			buffer, err := Compile(self.Children[0], envm, envp, branch)
 			if err == nil {
-				buffer = pat.Product(buffer, pattern)
-				continue
+				for _, child := range self.Children[1:] {
+					pattern, err := Compile(child, envm, envp, branch)
+					if err == nil {
+						buffer = pat.Product(buffer, pattern)
+						continue
+					}
+					return nil, err
+				}
+				return buffer, nil
 			}
 			return nil, err
 		}
-		return buffer, nil
+		return pat.StdE, nil
 	}
 	if self, ok := self.(Application); ok {
 		if macro, ok := envm.Traverse(self.Identifier); ok {
@@ -382,7 +388,7 @@ func Compile(self Expression, envm env.Environment[Macro], envp env.Environment[
 				return nil, err
 			}
 			return nil, source.Diagnostic{
-				Message: fmt.Sprintf("%s expected %d arguments, but %d were provided", self.Identifier, len(parameters), len(self.Arguments)),
+				Message: fmt.Sprintf("'%s' expects %d arguments, but %d were provided", self.Identifier, len(parameters), len(self.Arguments)),
 				Excerpt: self.Origin(),
 			}
 		}

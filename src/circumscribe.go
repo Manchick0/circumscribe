@@ -5,6 +5,7 @@ import (
 	"circumscribe/env"
 	"circumscribe/parser"
 	"circumscribe/pat"
+	"circumscribe/sgr"
 	"circumscribe/source"
 	"errors"
 	"fmt"
@@ -153,15 +154,44 @@ func main() {
 				if len(options) > 1 {
 					envm, envp, err := initEnvironment(flags)
 					if err == nil {
-						reader := source.NewReader("evaluate", options[1])
-						expression, err := parser.ReadExpression(&reader, parser.All, false)
+						reader := source.NewReader("infer", options[1])
+						position := reader.Position()
+						identifier, err := reader.ReadIdentifier()
 						if err == nil {
-							pattern, err := ast.Compile(expression, envm, envp, env.Branch[ast.Macro]{})
-							if err == nil {
-								fmt.Println(pattern)
-								os.Exit(0)
+							macro, ok := envm.Traverse(identifier)
+							if ok {
+								pattern, err := macro.Infer(envm, envp, env.Branch[ast.Macro]{})
+								if err == nil {
+									pure, err := macro.IsPure(envm, envp, env.Branch[ast.Macro]{})
+									if err == nil {
+										var buffer strings.Builder
+										fmt.Fprint(&buffer, func() string {
+											if pure {
+												return sgr.Escape(identifier, sgr.Pure)
+											}
+											return sgr.Escape(identifier, sgr.Impure)
+										}())
+										fmt.Fprint(&buffer, " :: ")
+										fmt.Fprint(&buffer, "(")
+										for n, parameter := range macro.Parameters() {
+											if n > 0 {
+												fmt.Fprint(&buffer, ", ")
+											}
+											fmt.Fprintf(&buffer, "%s", parameter.Pattern.Pretty(true, pat.PrecAll))
+										}
+										fmt.Fprint(&buffer, ")")
+										fmt.Fprint(&buffer, " -> ")
+										fmt.Fprintf(&buffer, "%s", pattern.Pretty(true, pat.PrecAll))
+										fmt.Println(buffer.String())
+										os.Exit(0)
+									}
+									fmt.Fprintln(os.Stderr, err)
+									os.Exit(1)
+								}
+								fmt.Fprintln(os.Stderr, err)
+								os.Exit(1)
 							}
-							fmt.Fprintln(os.Stderr, err)
+							fmt.Fprintln(os.Stderr, source.Diagnose(fmt.Sprintf("circumscribe: Could not resolve identifier '%s'", identifier), reader.Excerpt(position)))
 							os.Exit(1)
 						}
 						fmt.Fprintln(os.Stderr, err)

@@ -1,3 +1,21 @@
+# circumscribe 0.2.0
+> November 21, 2026
+
+Overhauled 'circumscribe infer' and enhance error messages
+across the codebase.
+
+- The 'circumscribe infer' subcommand now accepts a function
+  by an identifier, instead of a general expression, and reports
+  its parameters, return pattern, and purity.
+
+- The pattern pretty-printing was enhanced as a result of
+  'circumscribe infer' changes. Patterns now only use parentheses
+  when necessary, and a redundant 'e' no longer appears in snippet
+  product patterns.
+
+- The ':' interval operator was reverted back to '-', due to its
+  previously unnoticed conflict with the body of a macro.
+
 # circumscribe 0.1.1
 > November 21, 2026
 

@@ -3,6 +3,7 @@ package pat
 import (
 	"circumscribe/env"
 	"circumscribe/iters"
+	"circumscribe/sgr"
 	"circumscribe/source"
 	"fmt"
 	"iter"
@@ -22,7 +23,8 @@ var (
 )
 
 type Pattern interface {
-	Compile(environment env.Environment[Pattern], branch env.Branch[Pattern]) (*nFA, error)
+	Compile(env.Environment[Pattern], env.Branch[Pattern]) (*nFA, error)
+	Pretty(bool, int) string
 	Origin() *source.Excerpt
 }
 
@@ -60,8 +62,15 @@ func (self *interval) Origin() *source.Excerpt {
 	return self.excerpt
 }
 
-func (self *interval) String() string {
+func (self *interval) Pretty(color bool, precedence int) string {
+	if color {
+		return fmt.Sprintf("%s-%s", sgr.Escape(fmt.Sprintf("|\\u%04x|", self.interval[0]), sgr.Literal), sgr.Escape(fmt.Sprintf("|\\u%04x|", self.interval[1]-1), sgr.Literal))
+	}
 	return fmt.Sprintf("|\\u%04x|-|\\u%04x|", self.interval[0], self.interval[1]-1)
+}
+
+func (self *interval) String() string {
+	return self.Pretty(false, PrecAll)
 }
 
 type literal struct {
@@ -85,11 +94,11 @@ func (self *literal) Compile(environment env.Environment[Pattern], branch env.Br
 			transition := make([][]thread, len(self.literal)+1)
 			buffer := strings.NewReader(self.literal)
 			for n := 0; buffer.Len() > 0; n++ {
-				c, _, err := buffer.ReadRune()
+				color, _, err := buffer.ReadRune()
 				if err == nil {
 					transition[n] = []thread{
 						{
-							w: [2]rune{c, c + 1},
+							w: [2]rune{color, color + 1},
 							q: []uint16{uint16(n + 1)},
 						},
 					}
@@ -119,6 +128,13 @@ func (self *literal) Compile(environment env.Environment[Pattern], branch env.Br
 
 func (self *literal) Origin() *source.Excerpt {
 	return self.excerpt
+}
+
+func (self *literal) Pretty(color bool, precendence int) string {
+	if color {
+		return sgr.Escape(self.String(), sgr.Literal)
+	}
+	return self.String()
 }
 
 func (self *literal) String() string {
@@ -174,8 +190,15 @@ func (self *sum) Origin() *source.Excerpt {
 	return self.excerpt
 }
 
+func (self *sum) Pretty(color bool, precedence int) string {
+	if precedence < PrecAdd {
+		return fmt.Sprintf("(%s + %s)", self.left.Pretty(color, PrecAdd), self.right.Pretty(color, PrecAdd))
+	}
+	return fmt.Sprintf("%s + %s", self.left.Pretty(color, PrecAdd), self.right.Pretty(color, PrecAdd))
+}
+
 func (self *sum) String() string {
-	return fmt.Sprintf("(%s + %s)", self.left, self.right)
+	return self.Pretty(false, PrecAdd)
 }
 
 type product struct {
@@ -225,8 +248,15 @@ func (self *product) Origin() *source.Excerpt {
 	return self.excerpt
 }
 
+func (self *product) Pretty(color bool, precedence int) string {
+	if precedence < PrecMul {
+		return fmt.Sprintf("(%s * %s)", self.left.Pretty(color, PrecMul), self.right.Pretty(color, PrecMul))
+	}
+	return fmt.Sprintf("%s * %s", self.left.Pretty(color, PrecMul), self.right.Pretty(color, PrecMul))
+}
+
 func (self *product) String() string {
-	return fmt.Sprintf("(%s * %s)", self.left, self.right)
+	return self.Pretty(false, PrecMul)
 }
 
 type intersection struct {
@@ -264,8 +294,15 @@ func (self *intersection) Origin() *source.Excerpt {
 	return self.excerpt
 }
 
+func (self *intersection) Pretty(color bool, precedence int) string {
+	if precedence < PrecAnd {
+		return fmt.Sprintf("(%s & %s)", self.left.Pretty(color, PrecMul), self.right.Pretty(color, PrecMul))
+	}
+	return fmt.Sprintf("%s & %s", self.left.Pretty(color, PrecMul), self.right.Pretty(color, PrecMul))
+}
+
 func (self *intersection) String() string {
-	return fmt.Sprintf("(%s & %s)", self.left, self.right)
+	return self.Pretty(false, PrecAnd)
 }
 
 type ellipsis struct {
@@ -315,8 +352,12 @@ func (self *ellipsis) Origin() *source.Excerpt {
 	return self.excerpt
 }
 
+func (self *ellipsis) Pretty(color bool, precedence int) string {
+	return fmt.Sprintf("%s...", self.pattern.Pretty(color, PrecEll))
+}
+
 func (self *ellipsis) String() string {
-	return fmt.Sprintf("%s...", self.pattern)
+	return self.Pretty(false, PrecEll)
 }
 
 type complement struct {
@@ -349,8 +390,12 @@ func (self *complement) Origin() *source.Excerpt {
 	return self.excerpt
 }
 
+func (self *complement) Pretty(color bool, precedence int) string {
+	return fmt.Sprintf("!%s", self.pattern.Pretty(color, PrecEll))
+}
+
 func (self *complement) String() string {
-	return fmt.Sprintf("!%s", self.pattern)
+	return self.Pretty(false, PrecEll)
 }
 
 type reference struct {
@@ -393,8 +438,15 @@ func (self *reference) Origin() *source.Excerpt {
 	return self.excerpt
 }
 
-func (self *reference) String() string {
+func (self *reference) Pretty(color bool, precdence int) string {
+	if color {
+		return sgr.Escape(self.identifier, sgr.Reference)
+	}
 	return self.identifier
+}
+
+func (self *reference) String() string {
+	return self.Pretty(false, PrecAll)
 }
 
 type nFA struct {
@@ -423,11 +475,11 @@ func (self *nFA) PartiallySatisfies(language string) []string {
 		}
 		for len(language) > 0 && len(Q) > 0 {
 			QQ := []uint16{}
-			c, len := utf8.DecodeRuneInString(language)
+			color, len := utf8.DecodeRuneInString(language)
 			language = language[len:]
 			for _, q := range Q {
 				for _, branch := range self.transition[q] {
-					if branch.w[0] <= c && c < branch.w[1] {
+					if branch.w[0] <= color && color < branch.w[1] {
 						for _, qq := range branch.q {
 							for qe := range self.closure(qq) {
 								if slices.Contains(self.accept, qe) {
@@ -461,11 +513,11 @@ func (self *nFA) Satisfies(language string) bool {
 		}
 		for len(language) > 0 && len(Q) > 0 {
 			QQ := []uint16{}
-			c, len := utf8.DecodeRuneInString(language)
+			color, len := utf8.DecodeRuneInString(language)
 			language = language[len:]
 			for _, q := range Q {
 				for _, branch := range self.transition[q] {
-					if branch.w[0] <= c && c < branch.w[1] {
+					if branch.w[0] <= color && color < branch.w[1] {
 						for _, qq := range branch.q {
 							for qe := range self.closure(qq) {
 								QQ = append(QQ, qe)
@@ -878,8 +930,8 @@ func ReadPattern(reader *source.Reader, precedence int) (Pattern, error) {
 		}
 		var buffer strings.Builder
 		for reader.CanRead() {
-			c := reader.Peek()
-			if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '\'' || c == '_' {
+			color := reader.Peek()
+			if color >= 'a' && color <= 'z' || color >= 'A' && color <= 'Z' || color == '\'' || color == '_' {
 				buffer.WriteRune(reader.Read())
 				continue
 			}
@@ -899,7 +951,7 @@ func ReadPattern(reader *source.Reader, precedence int) (Pattern, error) {
 }
 
 func readInterval(reader *source.Reader, left *literal) (Pattern, error) {
-	if reader.ReadSyntax(":") {
+	if reader.ReadSyntax("-") {
 		if utf8.RuneCountInString(left.literal) == 1 {
 			right, err := readLiteral(reader)
 			if err == nil {
