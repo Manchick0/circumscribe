@@ -1,3 +1,9 @@
+# circumscribe 0.1.1
+> November 21, 2026
+
+Resolved the issue with incorrectly outputting the machines
+on a pattern mismatch instead of the respective patterns.
+
 # circumscribe 0.1.0
 > November 21, 2026
 

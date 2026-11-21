@@ -321,7 +321,7 @@ func (self *Source) Compile(envm env.Environment[Macro], envp env.Environment[pa
 					intersection := left.Intersection(complement)
 					if intersection.IsMeaningful() {
 						return source.Diagnostic{
-							Message: fmt.Sprintf("Pattern '%s' is not assignable to '%s'", left, right),
+							Message: fmt.Sprintf("Pattern '%s' is not assignable to '%s'", pattern, self.Pattern),
 							Excerpt: self.Body.Origin(),
 						}
 					}

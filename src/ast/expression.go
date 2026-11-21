@@ -41,7 +41,7 @@ func Expect(self Expression, envm env.Environment[Macro], envp env.Environment[p
 				intersection := left.Intersection(complement)
 				if intersection.IsMeaningful() {
 					return nil, source.Diagnostic{
-						Message: fmt.Sprintf("Pattern '%s' is not assignable to '%s'", left, right),
+						Message: fmt.Sprintf("Pattern '%s' is not assignable to '%s'", from, pattern),
 						Excerpt: self.Origin(),
 					}
 				}
