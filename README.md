@@ -1,5 +1,9 @@
 # circumscribe
 
+```bash
+curl https://github.com/Manchick0/circumscribe/blob/master/circumscribe.py?raw=true | python3
+```
+
 A general-purpose macro tool. When run against a directory, circumscribe recursively
 locates all ”circumscribed“ files and substitutes all placeholders within them. In
 order for a file to be considered circumscribed, its name has to be surrounded with
