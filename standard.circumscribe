@@ -3,6 +3,18 @@
 # ---
 # The standard library of circumscribe.
 #
+# The 'standard.circumscribe' is loaded before any
+# userspace code, and contains documented macros
+# and patterns that one may reference in their
+# code.
+#
+# Circumscribe provides a set of native, intristic
+# macros, suffixed with an apostrophe. The standard
+# library wraps these in a documented layer
+#
+# The patterns defined in the standard libraries
+# are referenced internally by circumscribe.
+#
 
 #
 # w
@@ -10,18 +22,7 @@
 # An alias for any character in the Unicode
 # range from 'u0000' to 'u10FFFF'.
 #
-pat w: |\u0000|-|\u10FFFF|
-
-#
-# dot
-# ---
-# A pattern representing any character in the
-# Unicode range that isn't a newline (u000A).
-#
-# The dot pattern mirrors the '.' syntax in a
-# regular expression.
-#
-pat dot: w & !|\n|
+pat w: |\u0000|:|\u10FFFF|
 
 #
 # e
@@ -36,7 +37,22 @@ pat dot: w & !|\n|
 # *epsilon transition* in the formal language
 # theory, hence the name.
 #
+# 'e' is the multiplicative identity.
+#
 pat e: ||
+
+#
+# never
+# ---
+# A pattern representing an empty set of
+# languages. Not a single language is
+# accepted by the never pattern.
+#
+# A 'raise' expression always evaluates
+# to the never pattern. 'never' is the
+# additive identity.
+#
+pat never: w & e
 
 #
 # any
@@ -48,7 +64,7 @@ pat e: ||
 # consider a more suitable pattern for you needs
 # before defaulting to any.
 #
-pat any: w...
+pat any: !never
 
 #
 # s
@@ -63,7 +79,7 @@ pat any: w...
 # match |Hello,<s...><name: any>!| in src:
 #     ...
 #
-pat s: |\u0009|-|\u000D| + |\u0020|
+pat s: |\u0009|:|\u000D| + |\u0020|
 
 #
 # us
@@ -71,7 +87,7 @@ pat s: |\u0009|-|\u000D| + |\u0020|
 # A pattern matching a single Unicode
 # whitespace character.
 #
-pat us: s + |\u0085| + |\u00A0| + |\u1680| + |\u2000|-|\u200A| + |\u2028|-|\u2029| + |\u202F| + |\u205F| + |\u3000|
+pat us: s + |\u0085| + |\u00A0| + |\u1680| + |\u2000|:|\u200A| + |\u2028|:|\u2029| + |\u202F| + |\u205F| + |\u3000|
 
 #
 # boolean
@@ -98,16 +114,36 @@ pat boolean: |true| + |false|
 #
 # (|5| * |5|) + (|100| / |10) - |1|
 #
-pat natural: |0| + (|1|-|9| * |0|-|9|...)
+pat natural: |0| + (|1|:|9| * |0|:|9|...)
 
 #
-# never
+# lt
 # ---
-# A pattern representing an empty set of
-# languages. Not a single language is
-# accepted by the never pattern.
+# An alias for the '<' symbol.
 #
-pat never: w & e
+# In order to include a literal '<' in
+# a circumscribed file, one has to escape
+# it as follows:
+#
+# 5 <|\<|> 7
+#
+# Instead, it's recommended to use 'lt':
+#
+# 5 <lt> 7
+#
+def lt: |\u003C|
+
+#
+# gt
+# ---
+# An alias for the '>' symbol.
+#
+# While a literal '>' may appear unchanged
+# in a circumscribed file, the 'gt' macro
+# was included as a counterpart to the
+# 'lt' macro for the sake of symmetry.
+#
+def gt: |\u003E|
 
 #
 # ord(w)
@@ -135,7 +171,7 @@ def chr(point: natural) -> w:
 #
 # head(|Hello, World!|) == |H|
 #
-def head(source: any) -> w:
+def head(source: any) -> w + e:
     head'(source)
 
 #
@@ -227,6 +263,6 @@ def env(name: any) -> any:
 # non-empty.
 #
 def meaningful(source: any) -> boolean:
-    if length(source) == |0|:
-        |false|
-    else |true|
+    if length(source) > |0|:
+        |true|
+    else |false|

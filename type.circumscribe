@@ -1,67 +1,197 @@
 #
 # type.circumscribe
 # ---
-# A collection of typesetting macros:
-# https://oeis.org/wiki/List_of_LaTeX_mathematical_symbols
+# Contains common macros useful in typesetting
+# a document. The majority of names were taken
+# from TeX, with some adjustments for
+# consistency.
 #
 
-def pm: |±|
-
-def N: |ℕ|
-def Z: |ℤ|
-def Q: |ℚ|
-def R: |ℝ|
-def C: |ℂ|
-
-def cup: |\u222A|
-  
-def cap: |\u2229|
-
-def subset: |\u2282|
-def subseteq: |\u2286|
-  
-def supset: |\u2283|
-def supseteq: |\u2287|
-
-def neq: |≠|
-
-def empty: |\u2205|
-
-def in: |∈|
-def ni: |∋|
-
-def cong: |≅|
-
-# Logic
-def exists: |∃|
-def forall: |∀|
-
-# Greek
-
-def alpha: |α|
-def Alpha: |Α|
-
-def beta: |β|
-def Beta: |Β|
-  
-def epsilon: |ε|
+#
+# Greek Alphabet
+# ---
+# The following section covers
+# the Greek alphabet. 
+#
+def Alpha:   |Α|
+def Beta:    |Β|
+def Gamma:   |Γ|
+def Delta:   |Δ|
 def Epsilon: |Ε|
+def Zeta:    |Ζ|
+def Eta:     |Η|
+def Theta:   |Θ|
+def Iota:    |Ι|
+def Kappa:   |Κ|
+def Lambda:  |Λ|
+def Mu:      |Μ|
+def Nu:      |Ν|
+def Xi:      |Ξ|
+def Omicron: |Ο|
+def Pi:      |Π|
+def Rho:     |Ρ|
+def Sigma:   |Σ|
+def Tau:     |Τ|
+def Upsilon: |Υ|
+def Phi:     |Φ|
+def Chi:     |Χ|
+def Psi:     |Ψ|
+def Omega:   |Ω|
 
-pat negatable: |∈| + |∃|
+def alpha:   |α|
+def beta:    |β|
+def gamma:   |γ|
+def delta:   |δ|
+def epsilon: |ε|
+def zeta:    |ζ|
+def eta:     |η|
+def theta:   |θ|
+def iota:    |ι|
+def kappa:   |κ|
+def lambda:  |λ|
+def mu:      |μ|
+def nu:      |ν|
+def xi:      |ξ|
+def omicron: |ο|
+def pi:      |π|
+def rho:     |ρ|
+def sigma:   |σ|
+def sigma':  |ς|
+def tau:     |τ|
+def upsilon: |υ|
+def phi:     |φ|
+def chi:     |χ|
+def psi:     |ψ|
+def omega:   |ω|
 
+#
+# Relation
+# ---
+# The following section covers
+# common relation operators.
+#
+def leq:    |≤|
+def geq:    |≥|
+def prec:   |≺|
+def preceq: |⪯|
+def succ:   |≻|
+def succeq: |⪰|
+
+def doteq:  |≐|
+def equiv:  |≡|
+def approx: |≈|
+def cong:   |≅|
+def sim:    |∼|
+def simeq:  |≃|
+def prop:   |∝|
+
+#
+# Binary
+# ---
+# The following sections covers
+# common binary operators.
+#
+def pm:    |±|
+def dot:   |⋅|
+def cross: |×|
+def div:   |÷|
+def ast:   |∗|
+def star:  |⋆|
+
+#
+# Sets
+# ---
+# The following section covers common
+# sets and the operations that may be
+# performed on them.
+#
+def N:        |ℕ|
+def Z:        |ℤ|
+def Q:        |ℚ|
+def R:        |ℝ|
+def C:        |ℂ|
+def empty:    |∅|
+def cup:      |∪|
+def cap:      |∩|
+def subset:   |⊂|
+def subseteq: |⊆|
+def supset:   |⊃|
+def supseteq: |⊇|
+def diff:     |∖|
+def in:       |∈|
+def owns:     |∋|
+
+#
+# Logic
+# ---
+# The following section covers the
+# logical operators and arrows.
+#
+def exists:  |∃|
+def forall:  |∀|
+def lor:     |∨|
+def land:    |∧|
+def top:     |⊤|
+def bottom:  |⊥|
+def implies: ldright
+def iff:     dboth
+
+def left:    |←|
+def dleft:   |⇐|
+def right:   |→|
+def dright:  |⇒|
+def lleft:   |⟵|
+def lright:  |⟶|
+def ldleft:  |⟸|
+def ldright: |⟹|
+def both:    |↔|
+def dboth:   |⟺|
+
+#
+# neg(expression)
+# ---
+# Prepend the logical 'not' to
+# the given expression.
+#
 def not(expression: any) -> any:
     |¬<expression>|
 
+pat negatable: |=| + |<| + |>| + |≤|
+             + |≥| + |≺| + |≻| + |⪯| 
+             + |⪰| + |≡| + |≈| + |≅|
+             + |∼| + |≃| + |⊂| + |⊆|
+             + |⊃| + |⊇| + |∈| + |∋|
+             + |∃|
+
 #
-# neg(symbol)
+# not(symbol)
 # ---
 # Compute the logical negation
-# of given symbol.
+# for given symbol.
 #
 def neg(symbol: negatable) -> w:
     switch symbol:
-        |∈|: |∉|
-        |∃|: |∄|
+        case |=|: |≠|
+        case |\<|: |≮|
+        case |>|: |≯|
+        case |≤|: |≰|
+        case |≥|: |≱|
+        case |≺|: |⊀|
+        case |≻|: |⊁|
+        case |⪯|: |⋠|
+        case |⪰|: |⋡|
+        case |≡|: |≢|
+        case |≈|: |≉|
+        case |≅|: |≇|
+        case |∼|: |≁|
+        case |≃|: |≄|
+        case |⊂|: |⊄|
+        case |⊆|: |⊈|
+        case |⊃|: |⊅|
+        case |⊇|: |⊉|
+        case |∈|: |∉|
+        case |∋|: |∌|
+        case |∃|: |∄|
         default ...
 
 #
@@ -83,7 +213,7 @@ def floor(expression: any) -> any:
 #
 # ceil(|f(x)|) # ⌈f(x)⌉ 
 #
-def ceil(source: any) -> any:
+def ceil(expression: any) -> any:
     |⌈<expression>⌉|
 
 #
@@ -103,13 +233,23 @@ pat script: |0|-|9| + |(| + |)| + |+| + |-| + |=| + |n|
 #
 def super(expression: (script + s)...) -> any:
     if meaningful(expression):
-        |<super'(head(expression))><super(tail(expression))>|
+        with head(expression) as head:
+            with tail(expression) as tail:
+                if head satisfies (script + s) and tail satisfies (script + s)...:
+                    |<super'(head)><super(tail)>|
+                else ...
     else ||
 
+#
+# super'(w)
+# ---
+# Convert the given script character
+# to an equivalent superscript one.
+#
 def super'(w: script + s) -> w:
     switch w:
         case |0|: |\u2070|
-        case |1|: |\u00BA|
+        case |1|: |\u00B9|
         case |2|: |\u00B2|
         case |3|: |\u00B3|
         case |4|: |\u2074|
@@ -134,16 +274,25 @@ def super'(w: script + s) -> w:
 #
 def sub(expression: (script + s)...) -> any:
     if meaningful(expression):
-        |<sub'(head(expression))><sub(tail(expression))>|
+        with head(expression) as head:
+            with tail(expression) as tail:
+                if head satisfies (script + s) and tail satisfies (script + s)...:
+                    |<sub'(head)><sub(tail)>|
+                else ...
     else ||
 
+#
+# sub'(w)
+# ---
+# Convert the given script character
+# to an equivalent subscript one.
+#
 def sub'(w: script + s) -> w:
     switch w:
         case |0|: |\u2080|
         case |1|: |\u0081|
         case |2|: |\u0082|
         case |3|: |\u0083|
-        case |2|: |\u0082|
         case |4|: |\u2084|
         case |5|: |\u2085|
         case |6|: |\u2086|

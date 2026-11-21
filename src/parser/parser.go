@@ -1,7 +1,7 @@
 package parser
 
 import (
-	"circumscribe/expr"
+	"circumscribe/ast"
 	"circumscribe/pat"
 	"circumscribe/source"
 	"strings"
@@ -15,7 +15,7 @@ type Definition interface {
 
 type Macro struct {
 	Identifier string
-	Macro      expr.Macro
+	Macro      ast.Macro
 	Excerpt    source.Excerpt
 }
 
@@ -47,33 +47,48 @@ func (self Pattern) def() {}
 
 const (
 	Postfix = iota
-	Mul
-	Add
-	Comp
-	And
-	Or
+	PrecMul
+	PrecAdd
+	PrecRel
+	PrecComp
+	PrecAnd
+	PrecOr
 	All
 )
 
-func ReadExpression(reader *source.Reader, precedence int) (expr.Expression, error) {
+func ReadExpression(reader *source.Reader, precedence int, escape bool) (ast.Expression, error) {
 	if reader.SkipWhitespace() {
 		position := reader.Position()
-		if reader.ReadOnly("match") {
+		if reader.ReadOnly("(") {
+			expression, err := ReadExpression(reader, All, false)
+			if err == nil {
+				if reader.ReadOnly(")") {
+					return ReadTrailing(reader, expression, precedence, escape)
+				}
+				return nil, source.Diagnose("Expected ')'", reader.PointExcerpt())
+			}
+			return nil, err
+		}
+		if reader.ReadWord("match") {
 			grammar, diagnostic := pat.ReadGrammar(reader)
 			if diagnostic == nil {
-				if reader.ReadMeaningful("in") {
-					src, diagnostic := ReadExpression(reader, All)
+				if reader.ReadWord("in") {
+					src, diagnostic := ReadExpression(reader, All, false)
 					if diagnostic == nil {
-						if reader.ReadMeaningful(":") {
-							body, diagnostic := ReadExpression(reader, All)
+						if reader.ReadSyntax(":") {
+							body, diagnostic := ReadExpression(reader, All, false)
 							if diagnostic == nil {
-								if reader.ReadMeaningful("else") {
-									other, diagnostic := ReadExpression(reader, All)
+								if reader.ReadWord("else") {
+									other, diagnostic := ReadExpression(reader, precedence, escape)
 									if diagnostic == nil {
-										return expr.Match{
-											Grammar:   grammar,
-											Source:    src,
-											Body:      body,
+										return ast.Switch{
+											Source: src,
+											Branches: []ast.Case{
+												{
+													Grammar: grammar,
+													Body:    body,
+												},
+											},
 											Otherwise: other,
 											Excerpt:   other.Origin().Expand(position),
 										}, nil
@@ -92,21 +107,65 @@ func ReadExpression(reader *source.Reader, precedence int) (expr.Expression, err
 			}
 			return nil, diagnostic
 		}
-		if reader.ReadOnly("if") {
-			condition, diagnostic := ReadExpression(reader, All)
+		if reader.ReadWord("switch") {
+			src, err := ReadExpression(reader, All, false)
+			if err == nil {
+				if reader.ReadSyntax(":") {
+					buffer := []ast.Case{}
+					for reader.SkipWhitespace() {
+						if reader.ReadWord("case") {
+							grammar, err := pat.ReadGrammar(reader)
+							if err == nil {
+								if reader.ReadSyntax(":") {
+									body, err := ReadExpression(reader, All, false)
+									if err == nil {
+										buffer = append(buffer, ast.Case{
+											Grammar: grammar,
+											Body:    body,
+										})
+										if reader.ReadSyntax("default") {
+											otherwise, err := ReadExpression(reader, precedence, escape)
+											if err == nil {
+												return ast.Switch{
+													Source:    src,
+													Branches:  buffer,
+													Otherwise: otherwise,
+													Excerpt:   otherwise.Origin().Expand(position),
+												}, nil
+											}
+											return nil, err
+										}
+										continue
+									}
+									return nil, err
+								}
+								return nil, source.Diagnose("Expected ':'", reader.PointExcerpt())
+							}
+							return nil, err
+						}
+						return nil, source.Diagnose("Expected 'case'", reader.PointExcerpt())
+					}
+					return nil, source.Diagnose("Expected 'default'", reader.PointExcerpt())
+				}
+				return nil, source.Diagnose("Expected ':'", reader.PointExcerpt())
+			}
+			return nil, err
+		}
+		if reader.ReadWord("if") {
+			condition, diagnostic := ReadExpression(reader, All, false)
 			if diagnostic == nil {
-				if reader.ReadMeaningful(":") {
-					body, diagnostic := ReadExpression(reader, All)
+				if reader.ReadSyntax(":") {
+					body, diagnostic := ReadExpression(reader, All, false)
 					if diagnostic == nil {
-						if reader.ReadMeaningful("else") {
-							otherwise, diagnostic := ReadExpression(reader, All)
+						if reader.ReadWord("else") {
+							otherwise, diagnostic := ReadExpression(reader, precedence, escape)
 							if diagnostic == nil {
-								return ReadTrailing(reader, expr.If{
+								return ast.If{
 									Condition: condition,
 									Body:      body,
 									Otherwise: otherwise,
 									Excerpt:   otherwise.Origin().Expand(position),
-								}, precedence)
+								}, nil
 							}
 							return nil, diagnostic
 						}
@@ -118,49 +177,86 @@ func ReadExpression(reader *source.Reader, precedence int) (expr.Expression, err
 			}
 			return nil, diagnostic
 		}
-		if reader.ReadOnly("not") {
-			expression, err := ReadExpression(reader, Postfix)
+		// TODO: Perhaps (somehow) change the order?
+		if reader.ReadWord("with") {
+			expression, err := ReadExpression(reader, precedence, escape)
 			if err == nil {
-				return ReadTrailing(reader, expr.Not{
+				if reader.ReadWord("as") {
+					identifier, err := reader.ReadIdentifier()
+					if err == nil {
+						if reader.ReadSyntax(":") {
+							body, err := ReadExpression(reader, precedence, escape)
+							if err == nil {
+								return ast.With{
+									Identifier: identifier,
+									Expression: expression,
+									Body:       body,
+									Excerpt:    body.Origin().Expand(position),
+								}, nil
+							}
+							return nil, err
+						}
+						return nil, source.Diagnose("Expected ':'", reader.PointExcerpt())
+					}
+					return nil, err
+				}
+				return nil, source.Diagnose("Expected 'as'", reader.PointExcerpt())
+			}
+			return nil, err
+		}
+		if reader.ReadWord("raise") {
+			expression, err := ReadExpression(reader, precedence, escape)
+			if err == nil {
+				return ast.Raise{
 					Expression: expression,
 					Excerpt:    expression.Origin().Expand(position),
-				}, precedence)
+				}, nil
+			}
+			return nil, err
+		}
+		if reader.ReadWord("not") {
+			expression, err := ReadExpression(reader, precedence, escape)
+			if err == nil {
+				return ReadTrailing(reader, ast.Not{
+					Expression: expression,
+					Excerpt:    expression.Origin().Expand(position),
+				}, precedence, escape)
 			}
 			return nil, err
 		}
 		if reader.IsAt("|") {
 			literal, diagnostic := ReadLiteral(reader)
 			if diagnostic == nil {
-				return ReadTrailing(reader, literal, precedence)
+				return ReadTrailing(reader, literal, precedence, escape)
 			}
 			return literal, diagnostic
 		}
 		identifier, diagnostic := reader.ReadIdentifier()
 		if diagnostic == nil {
-			if reader.ReadMeaningful("(") {
-				var buffer []expr.Expression
+			if reader.ReadSyntax("(") {
+				var buffer []ast.Expression
 				if reader.SkipWhitespace() && reader.ReadOnly(")") {
-					return ReadTrailing(reader, expr.Application{
+					return ReadTrailing(reader, ast.Application{
 						Identifier: identifier,
-						Arguments:  []expr.Expression{},
+						Arguments:  []ast.Expression{},
 						Excerpt:    reader.Excerpt(position),
 						Bare:       false,
-					}, precedence)
+					}, precedence, escape)
 				}
 				for reader.SkipWhitespace() {
-					argument, diagnostic := ReadExpression(reader, precedence)
+					argument, diagnostic := ReadExpression(reader, precedence, false)
 					if diagnostic == nil {
 						buffer = append(buffer, argument)
-						if reader.ReadMeaningful(",") {
+						if reader.ReadSyntax(",") {
 							continue
 						}
-						if reader.ReadMeaningful(")") {
-							return ReadTrailing(reader, expr.Application{
+						if reader.ReadSyntax(")") {
+							return ReadTrailing(reader, ast.Application{
 								Identifier: identifier,
 								Arguments:  buffer,
 								Excerpt:    reader.Excerpt(position),
 								Bare:       false,
-							}, precedence)
+							}, precedence, escape)
 						}
 						return nil, source.Diagnose("Expected ')'", reader.PointExcerpt())
 					}
@@ -168,120 +264,142 @@ func ReadExpression(reader *source.Reader, precedence int) (expr.Expression, err
 				}
 				return nil, source.Diagnose("Expected ')'", reader.PointExcerpt())
 			}
-			return ReadTrailing(reader, expr.Application{
+			return ReadTrailing(reader, ast.Application{
 				Identifier: identifier,
-				Arguments:  []expr.Expression{},
+				Arguments:  []ast.Expression{},
 				Excerpt:    reader.Excerpt(position),
 				Bare:       true,
-			}, precedence)
+			}, precedence, escape)
 		}
 		return nil, diagnostic
 	}
 	return nil, source.Diagnose("Expected an expression", reader.PointExcerpt())
 }
 
-func ReadTrailing(reader *source.Reader, expression expr.Expression, precedence int) (expr.Expression, error) {
-	if precedence >= Mul && reader.ReadMeaningful("*") {
-		right, err := ReadExpression(reader, Mul)
+func ReadTrailing(reader *source.Reader, expression ast.Expression, precedence int, escape bool) (ast.Expression, error) {
+	if precedence >= PrecMul && reader.ReadSyntax("*") {
+		right, err := ReadExpression(reader, PrecMul, false)
 		if err == nil {
-			return ReadTrailing(reader, expr.Mul{
+			return ReadTrailing(reader, ast.Mul{
 				Left:    expression,
 				Right:   right,
 				Excerpt: expression.Origin().Union(*right.Origin()),
-			}, precedence)
+			}, precedence, escape)
 		}
 		return right, err
 	}
-	if precedence >= Mul && reader.ReadMeaningful("/") {
-		right, err := ReadExpression(reader, Mul)
+	if precedence >= PrecMul && reader.ReadSyntax("/") {
+		right, err := ReadExpression(reader, PrecMul, false)
 		if err == nil {
-			return ReadTrailing(reader, expr.Div{
+			return ReadTrailing(reader, ast.Div{
 				Left:    expression,
 				Right:   right,
 				Excerpt: expression.Origin().Union(*right.Origin()),
-			}, precedence)
+			}, precedence, escape)
 		}
 		return right, err
 	}
-	if precedence >= Add && reader.ReadMeaningful("+") {
-		right, err := ReadExpression(reader, Add)
+	if precedence >= PrecAdd && reader.ReadSyntax("+") {
+		right, err := ReadExpression(reader, PrecAdd, false)
 		if err == nil {
-			return ReadTrailing(reader, expr.Add{
+			return ReadTrailing(reader, ast.Add{
 				Left:    expression,
 				Right:   right,
 				Excerpt: expression.Origin().Union(*right.Origin()),
-			}, precedence)
+			}, precedence, escape)
 		}
 		return right, err
 	}
-	if precedence >= Add && reader.ReadMeaningful("-") {
-		right, err := ReadExpression(reader, Add)
+	if precedence >= PrecAdd && reader.ReadSyntax("-") {
+		right, err := ReadExpression(reader, PrecAdd, false)
 		if err == nil {
-			return ReadTrailing(reader, expr.Sub{
+			return ReadTrailing(reader, ast.Sub{
 				Left:    expression,
 				Right:   right,
 				Excerpt: expression.Origin().Union(*right.Origin()),
-			}, precedence)
+			}, precedence, escape)
 		}
 		return right, err
 	}
-	if precedence >= Comp && reader.ReadMeaningful("=") {
-		other, err := ReadExpression(reader, Comp)
+	if precedence >= PrecRel && !escape && reader.ReadSyntax("<") {
+		right, err := ReadExpression(reader, PrecRel, false)
 		if err == nil {
-			return ReadTrailing(reader, expr.Compare{
+			return ReadTrailing(reader, ast.Less{
+				Left:    expression,
+				Right:   right,
+				Excerpt: expression.Origin().Union(*right.Origin()),
+			}, precedence, false)
+		}
+		return right, err
+	}
+	if precedence >= PrecRel && !escape && reader.ReadSyntax(">") {
+		right, err := ReadExpression(reader, PrecRel, false)
+		if err == nil {
+			return ReadTrailing(reader, ast.Greater{
+				Left:    expression,
+				Right:   right,
+				Excerpt: expression.Origin().Union(*right.Origin()),
+			}, precedence, false)
+		}
+		return right, err
+	}
+	if precedence >= PrecComp && reader.ReadSyntax("=") {
+		other, err := ReadExpression(reader, PrecComp, escape)
+		if err == nil {
+			return ReadTrailing(reader, ast.Compare{
 				Left:    expression,
 				Right:   other,
 				Excerpt: expression.Origin().Union(*other.Origin()),
-			}, precedence)
+			}, precedence, escape)
 		}
 		return other, err
 	}
-	if precedence >= Comp && reader.ReadMeaningful("satisfies") {
+	if precedence >= PrecComp && reader.ReadWord("satisfies") {
 		pattern, err := pat.ReadPattern(reader, pat.PrecAll)
 		if err == nil {
-			return ReadTrailing(reader, expr.Satisfies{
+			return ReadTrailing(reader, ast.Satisfies{
 				Expression: expression,
 				Pattern:    pattern,
 				Excerpt:    expression.Origin().Union(*pattern.Origin()),
-			}, precedence)
+			}, precedence, escape)
 		}
 		return nil, err
 	}
-	if precedence >= And && reader.ReadMeaningful("and") {
-		right, err := ReadExpression(reader, Comp)
+	if precedence >= PrecAnd && reader.ReadWord("and") {
+		right, err := ReadExpression(reader, PrecAnd, escape)
 		if err == nil {
-			return ReadTrailing(reader, expr.And{
+			return ReadTrailing(reader, ast.And{
 				Left:    expression,
 				Right:   right,
 				Excerpt: expression.Origin().Union(*right.Origin()),
-			}, precedence)
+			}, precedence, escape)
 		}
 		return right, err
 	}
-	if precedence >= Or && reader.ReadMeaningful("or") {
-		right, err := ReadExpression(reader, Comp)
+	if precedence >= PrecOr && reader.ReadWord("or") {
+		right, err := ReadExpression(reader, PrecOr, escape)
 		if err == nil {
-			return ReadTrailing(reader, expr.Or{
+			return ReadTrailing(reader, ast.Or{
 				Left:    expression,
 				Right:   right,
 				Excerpt: expression.Origin().Union(*right.Origin()),
-			}, precedence)
+			}, precedence, escape)
 		}
 		return right, err
 	}
 	return expression, nil
 }
 
-func ReadDefinition(reader *source.Reader) (Definition, error) {
+func ReadEntry(reader *source.Reader) (Definition, error) {
 	if reader.SkipWhitespace() {
 		position := reader.Position()
-		if reader.ReadMeaningful("def") {
+		if reader.ReadWord("def") {
 			identifier, diagnostic := reader.ReadIdentifier()
 			if diagnostic == nil {
 				parameters, diagnostic := ReadParameters(reader)
 				if diagnostic == nil {
 					annotation, diagnostic := func() (pat.Pattern, error) {
-						if reader.ReadMeaningful("->") {
+						if reader.ReadSyntax("->") {
 							annotation, diagnostic := pat.ReadPattern(reader, pat.PrecAll)
 							if diagnostic == nil {
 								return annotation, nil
@@ -291,24 +409,18 @@ func ReadDefinition(reader *source.Reader) (Definition, error) {
 						return nil, nil
 					}()
 					if diagnostic == nil {
-						if reader.ReadMeaningful(":") {
-							body, diagnostic := ReadExpression(reader, All)
+						if reader.ReadSyntax(":") {
+							body, diagnostic := ReadExpression(reader, All, false)
 							if diagnostic == nil {
 								excerpt := body.Origin().Expand(position)
 								return Macro{
 									Identifier: identifier,
-									Macro: &expr.Source{
+									Macro: &ast.Source{
 										Identifier: identifier,
 										Pattern:    annotation,
 										Params:     parameters,
-										Body: struct {
-											Source expr.Expression
-											Folded expr.Expression
-										}{
-											Source: body,
-											Folded: nil,
-										},
-										Excerpt: excerpt,
+										Body:       body,
+										Excerpt:    excerpt,
 									},
 									Excerpt: excerpt,
 								}, nil
@@ -323,10 +435,10 @@ func ReadDefinition(reader *source.Reader) (Definition, error) {
 			}
 			return nil, diagnostic
 		}
-		if reader.ReadMeaningful("pat") {
+		if reader.ReadWord("pat") {
 			identifier, diagnostic := reader.ReadIdentifier()
 			if diagnostic == nil {
-				if reader.ReadMeaningful(":") {
+				if reader.ReadSyntax(":") {
 					pattern, diagnostic := pat.ReadPattern(reader, pat.PrecAll)
 					if diagnostic == nil {
 						return Pattern{
@@ -346,30 +458,30 @@ func ReadDefinition(reader *source.Reader) (Definition, error) {
 	return nil, nil
 }
 
-func ReadParameters(reader *source.Reader) ([]expr.Parameter, error) {
-	if reader.ReadMeaningful("(") {
-		buffer := []expr.Parameter{}
-		if reader.ReadMeaningful(")") {
-			return []expr.Parameter{}, nil
+func ReadParameters(reader *source.Reader) ([]ast.Parameter, error) {
+	if reader.ReadSyntax("(") {
+		buffer := []ast.Parameter{}
+		if reader.ReadSyntax(")") {
+			return []ast.Parameter{}, nil
 		}
 		for reader.SkipWhitespace() {
 			identifier, diagnostic := reader.ReadIdentifier()
 			if diagnostic == nil {
 				annotation, diagnostic := func() (pat.Pattern, error) {
-					if reader.ReadMeaningful(":") {
+					if reader.ReadSyntax(":") {
 						return pat.ReadPattern(reader, pat.PrecAll)
 					}
 					return pat.StdAny, nil
 				}()
 				if diagnostic == nil {
-					buffer = append(buffer, expr.Parameter{
+					buffer = append(buffer, ast.Parameter{
 						Name:    identifier,
 						Pattern: annotation,
 					})
-					if reader.ReadMeaningful(",") {
+					if reader.ReadSyntax(",") {
 						continue
 					}
-					if reader.ReadMeaningful(")") {
+					if reader.ReadSyntax(")") {
 						return buffer, nil
 					}
 					return nil, source.Diagnose("Expected ')'", reader.PointExcerpt())
@@ -380,33 +492,33 @@ func ReadParameters(reader *source.Reader) ([]expr.Parameter, error) {
 		}
 		return nil, source.Diagnose("Expected ')'", reader.PointExcerpt())
 	}
-	return []expr.Parameter{}, nil
+	return []ast.Parameter{}, nil
 }
 
 // Read a single literal from the given Reader.
-func ReadLiteral(reader *source.Reader) (expr.Expression, error) {
+func ReadLiteral(reader *source.Reader) (ast.Expression, error) {
 	if reader.SkipWhitespace() {
 		position := reader.Position()
 		if reader.ReadOnly("|") {
-			var children []expr.Expression
+			var children []ast.Expression
 			var buffer strings.Builder
 			for reader.CanRead() {
 				if reader.ReadOnly("|") {
-					children = append(children, expr.Literal{
+					children = append(children, ast.Literal{
 						Literal: buffer.String(),
 						Excerpt: reader.Excerpt(position),
 					})
-					return expr.Snippet{
+					return ast.Snippet{
 						Children: children,
 						Excerpt:  children[0].Origin().Expand(reader.Position()),
 					}, nil
 				}
 				if reader.ReadOnly("<") {
-					children = append(children, expr.Literal{
+					children = append(children, ast.Literal{
 						Literal: buffer.String(),
 						Excerpt: reader.Excerpt(position),
 					})
-					expression, err := ReadExpression(reader, All)
+					expression, err := ReadExpression(reader, All, true)
 					if err == nil {
 						children = append(children, expression)
 						if reader.SkipWhitespace() {

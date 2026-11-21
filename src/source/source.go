@@ -8,13 +8,6 @@ import (
 	"unicode/utf8"
 )
 
-type Reader struct {
-	source   Source
-	position uint64
-	column   uint32
-	line     uint32
-}
-
 type Excerpt struct {
 	source   Source
 	interval [2]Position
@@ -43,7 +36,19 @@ func Diagnose(message string, excerpt Excerpt) Diagnostic {
 	}
 }
 
-func New(name string, content string) Reader {
+// A sequential reader of a
+// certain source.
+// ---
+type Reader struct {
+	source   Source
+	position uint64
+	column   uint32
+	line     uint32
+}
+
+// Construct a new [Reader] for the given source.
+// ---
+func NewReader(name string, content string) Reader {
 	return Reader{
 		source: Source{
 			name:    name,
@@ -55,6 +60,8 @@ func New(name string, content string) Reader {
 	}
 }
 
+// Read 'n' runes from the source.
+// ---
 func (self *Reader) ReadMany(n int) string {
 	var buffer strings.Builder
 	for ; n > 0; n-- {
@@ -63,11 +70,15 @@ func (self *Reader) ReadMany(n int) string {
 	return buffer.String()
 }
 
+// Read a single rune from the source.
+// ---
+// Reads a rune and advances the position,
+// column, and line accordingly.
 func (self *Reader) Read() rune {
 	c, len := utf8.DecodeRuneInString(self.source.content[self.position:])
 	if c != utf8.RuneError {
 		self.position += uint64(len)
-		if c == '\n' {
+		if c == '\n' || c == '\r' {
 			self.column = 1
 			self.line++
 			return c
@@ -78,12 +89,16 @@ func (self *Reader) Read() rune {
 	return utf8.RuneError
 }
 
-func (self Reader) Peek() rune {
+// Peek a single rune from the source.
+// ---
+// Returns the rune at the current position
+// of the reader in the source.
+func (self *Reader) Peek() rune {
 	c, _ := utf8.DecodeRuneInString(self.source.content[self.position:])
 	return c
 }
 
-func (self Reader) PointExcerpt() Excerpt {
+func (self *Reader) PointExcerpt() Excerpt {
 	position := self.Position()
 	if self.CanRead() {
 		c, len := utf8.DecodeRuneInString(self.source.content[self.position:])
@@ -173,10 +188,34 @@ func (self *Reader) ReadOnly(sequence string) bool {
 	return false
 }
 
-func (self *Reader) ReadMeaningful(sequence string) bool {
+func (self *Reader) ReadSyntax(sequence string) bool {
+	position := self.Position()
 	if self.SkipWhitespace() {
-		return self.ReadOnly(sequence)
+		if self.ReadOnly(sequence) {
+			return true
+		}
+		self.Backtrack(position)
+		return false
 	}
+	self.Backtrack(position)
+	return false
+}
+
+func (self *Reader) ReadWord(sequence string) bool {
+	position := self.Position()
+	if self.SkipWhitespace() {
+		identifier, err := self.ReadIdentifier()
+		if err == nil {
+			if identifier == sequence {
+				return true
+			}
+			self.Backtrack(position)
+			return false
+		}
+		self.Backtrack(position)
+		return false
+	}
+	self.Backtrack(position)
 	return false
 }
 

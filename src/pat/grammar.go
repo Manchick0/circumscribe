@@ -134,7 +134,7 @@ func (self *Segment) Compile(environment env.Environment[Pattern]) error {
 }
 
 func ReadGrammar(reader *source.Reader) (Grammar, error) {
-	if reader.ReadMeaningful("|") {
+	if reader.ReadSyntax("|") {
 		var sequence []Segment
 		var buffer strings.Builder
 		for reader.CanRead() {
@@ -151,7 +151,7 @@ func ReadGrammar(reader *source.Reader) (Grammar, error) {
 					stamp := reader.Position()
 					identifier, err := reader.ReadIdentifier()
 					if err == nil {
-						if reader.ReadMeaningful(":") {
+						if reader.ReadSyntax(":") {
 							return &identifier, nil
 						}
 						reader.Backtrack(stamp)
@@ -168,7 +168,7 @@ func ReadGrammar(reader *source.Reader) (Grammar, error) {
 							machine: nil,
 							pattern: pattern,
 						})
-						if reader.ReadMeaningful(">") {
+						if reader.ReadSyntax(">") {
 							continue
 						}
 						return Grammar{}, source.Diagnose("Expected '>'", reader.PointExcerpt())

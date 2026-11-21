@@ -219,7 +219,7 @@ The inferred pattern of a \texttt{not} is the standard \texttt{boolean} pattern.
 
 A \texttt{pattern} represents a single formal language. It replaces the notion of a
 `type' and serves an identical duty. In order for a pattern to accept a different one,
-the latter has to be a strict subset of the former. We say the former \emph{satisfies}
+the latter has to be a subset of the former. We say the former \emph{satisfies}
 the latter.
 
 \[L_0\left(a\right) \subseteq L_1\left(b\right) \iff a\text{ satisfies }b\]
@@ -232,7 +232,7 @@ circumscribe source file.
 \end{center}
 
 A pattern may not recurse. A recursive formal language is no longer regular, and
-no meaningful operations may be formed on context-sensitive languages.
+no meaningful operations may be formed on context-free languages.
 
 \begin{center}
     \verb/pat balanced: |(| * (balanced + boolean) |)|/
@@ -275,11 +275,11 @@ with multiplication:
 \subsubsection{Interval}
 
 An interval accepts a single character anywhere in-between its bounds, inclusively.
-Two literals may be converted into an interval with a dash, as long as each one
-satisfies the \verb/|\u0000|-|\u10FFFF|/ pattern.
+Two literals may be converted into an interval with a colon, as long as each one
+satisfies the \verb/|\u0000|-|\u10FFFF|/, the \verb|w| pattern.
 
 \begin{center}
-    \verb/|0|-|9|/
+    \verb/|0|:|9|/
 \end{center}
 
 \subsubsection{Sum}
@@ -315,6 +315,8 @@ Intersection has no counterpart in the usual regular expression sense.
 
 A \texttt{complement} represents the negation of a formal languages.
 Complement has no counterpart in the usual regular expression sense.
+
+\[!a = \neg L\left(a\right)\]
 
 \subsubsection{Reference}
 

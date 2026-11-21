@@ -1,0 +1,18 @@
+#
+# trim(source)
+# ---
+# Trim the leading and trailing whitespace
+# from the given source.
+#
+# The given source is matched against a grammar,
+# capturing everything in-between the whitespace.
+#
+# In order to not greedily include the trailing
+# whitespace as part of the match, we explicitly
+# force the match to backtrack by requiring a
+# non-whitespace 'tail'.
+#
+def trim(source: any) -> any:
+    match |<s...><head: any><tail: w & !s><s...>| in source:
+        |<head><tail>|
+    else ||

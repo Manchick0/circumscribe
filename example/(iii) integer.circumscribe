@@ -1,0 +1,29 @@
+
+pat integer: |(| * natural * |-| * natural * |)|
+
+def ilit(n: natural, m: natural) -> integer:
+    |(<n>-<m>)|
+
+def ineg(n: integer) -> integer:
+    match |(<a: natural>-<b:natural>)| in n:
+        |(<b>-<a>)|
+    else ...
+
+def inat(n: integer) -> natural:
+    match |(<a: natural>-<b:natural>)| in n:
+        a - b
+    else ...
+
+def iadd(n: integer, m: integer) -> integer:
+    match |(<a: natural>-<b:natural>)| in n:
+        match |(<c: natural>-<d:natural>)| in m:
+            |(<a + c>-<b+d>)|
+        else ...
+    else ...
+
+def imul(n: integer, m: integer) -> integer:
+    match |(<a: natural>-<b:natural>)| in n:
+        match |(<c: natural>-<d:natural>)| in m:
+            |(<a*c + b*d>-<a*d + b*c>)|
+        else ...
+    else ...

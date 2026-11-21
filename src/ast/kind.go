@@ -1,4 +1,4 @@
-package expr
+package ast
 
 import (
 	"circumscribe/env"
@@ -63,17 +63,42 @@ func (self If) Origin() *source.Excerpt {
 	return &self.Excerpt
 }
 
-// match <grammar> in src: ... else ...
-type Match struct {
-	Grammar   pat.Grammar
+type Case struct {
+	Grammar pat.Grammar
+	Body    Expression
+}
+
+type Switch struct {
+	Branches  []Case
 	Source    Expression
-	Body      Expression
 	Otherwise Expression
 	Excerpt   source.Excerpt
 }
 
-func (self Match) expr() {}
-func (self Match) Origin() *source.Excerpt {
+func (self Switch) expr() {}
+func (self Switch) Origin() *source.Excerpt {
+	return &self.Excerpt
+}
+
+type With struct {
+	Identifier string
+	Expression Expression
+	Body       Expression
+	Excerpt    source.Excerpt
+}
+
+func (self With) expr() {}
+func (self With) Origin() *source.Excerpt {
+	return &self.Excerpt
+}
+
+type Raise struct {
+	Expression Expression
+	Excerpt    source.Excerpt
+}
+
+func (self Raise) expr() {}
+func (self Raise) Origin() *source.Excerpt {
 	return &self.Excerpt
 }
 
@@ -176,5 +201,27 @@ type Div struct {
 
 func (self Div) expr() {}
 func (self Div) Origin() *source.Excerpt {
+	return &self.Excerpt
+}
+
+type Less struct {
+	Left    Expression
+	Right   Expression
+	Excerpt source.Excerpt
+}
+
+func (self Less) expr() {}
+func (self Less) Origin() *source.Excerpt {
+	return &self.Excerpt
+}
+
+type Greater struct {
+	Left    Expression
+	Right   Expression
+	Excerpt source.Excerpt
+}
+
+func (self Greater) expr() {}
+func (self Greater) Origin() *source.Excerpt {
 	return &self.Excerpt
 }

@@ -1,4 +1,4 @@
-package expr
+package ast
 
 import (
 	"circumscribe/env"
@@ -20,10 +20,9 @@ func Refine(implication Implication, envm env.Environment[Macro], envp env.Envir
 		if ok {
 			inferred, err := macro.Infer(envm, envp, env.Branch[Macro]{})
 			if err == nil {
-				buffer[name] = Placeholder{
-					identifier: name,
-					pattern:    pat.Intersection(inferred, pattern),
-					delegate:   &macro,
+				buffer[name] = Refinement{
+					pattern:  pat.Intersection(inferred, pattern),
+					delegate: macro,
 				}
 				continue
 			}
@@ -35,6 +34,38 @@ func Refine(implication Implication, envm env.Environment[Macro], envp env.Envir
 		Root:    envm.Root,
 		Parent:  &envm,
 		Entries: buffer,
+	}, nil
+}
+
+func Under(source Expression, pattern pat.Pattern, envm env.Environment[Macro], envp env.Environment[pat.Pattern], branch env.Branch[Macro]) (env.Environment[Macro], error) {
+	if source, ok := source.(Application); ok {
+		constant, err := source.IsConstant(envm, envp, branch)
+		if err == nil && constant {
+			macro, ok := envm.Traverse(source.Identifier)
+			if ok {
+				inferred, err := macro.Infer(envm, envp, branch)
+				if err == nil {
+					return env.Environment[Macro]{
+						Root:   envm.Root,
+						Parent: &envm,
+						Entries: env.Layer[Macro]{
+							source.Identifier: Refinement{
+								pattern:  pat.Intersection(inferred, pattern),
+								delegate: macro,
+							},
+						},
+					}, nil
+				}
+				return env.Environment[Macro]{}, err
+			}
+			panic("envm.Traverse(name)")
+		}
+		return env.Environment[Macro]{}, err
+	}
+	return env.Environment[Macro]{
+		Root:    envm.Root,
+		Parent:  &envm,
+		Entries: env.Layer[Macro]{},
 	}, nil
 }
 

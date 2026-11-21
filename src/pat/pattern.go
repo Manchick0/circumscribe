@@ -13,35 +13,17 @@ import (
 )
 
 var (
-	StdW       = Interval(0x0, 0x10FFFF)
-	StdE       = Literal("")
-	StdAny     = Ellipsis(StdW)
-	StdBoolean = Sum(Literal("true"), Literal("false"))
-	StdNatural = Sum(Literal("0"), Product(Interval('1', '9'), Ellipsis(Interval('0', '9'))))
-	StdS       = Sum(Interval(0x0009, 0x000D), Literal("\u0020"))
-	StdNever   = Intersection(StdW, StdE)
+	StdW       = Reference("w")
+	StdE       = Reference("e")
+	StdBoolean = Reference("boolean")
+	StdNatural = Reference("natural")
+	StdNever   = Reference("never")
+	StdAny     = Reference("any")
 )
 
 type Pattern interface {
 	Compile(environment env.Environment[Pattern], branch env.Branch[Pattern]) (*nFA, error)
 	Origin() *source.Excerpt
-}
-
-func Assign(environment env.Environment[Pattern], left Pattern, right Pattern) error {
-	l, err := left.Compile(environment, env.Branch[Pattern]{})
-	if err == nil {
-		r, err := right.Compile(environment, env.Branch[Pattern]{})
-		if err == nil {
-			complement := r.Complement()
-			intersection := l.Intersection(complement)
-			if intersection.IsMeaningful() {
-				return fmt.Errorf("Pattern '%s' is not assignable to '%s'", left, right)
-			}
-			return nil
-		}
-		return err
-	}
-	return err
 }
 
 type interval struct {
@@ -101,18 +83,24 @@ func (self *literal) Compile(environment env.Environment[Pattern], branch env.Br
 		if len(self.literal) > 0 {
 			epsilon := make([][]uint16, len(self.literal)+1)
 			transition := make([][]thread, len(self.literal)+1)
-			for n, c := range self.literal {
-				transition[n] = []thread{
-					{
-						w: [2]rune{c, c + 1},
-						q: []uint16{uint16(n + 1)},
-					},
+			buffer := strings.NewReader(self.literal)
+			for n := 0; buffer.Len() > 0; n++ {
+				c, _, err := buffer.ReadRune()
+				if err == nil {
+					transition[n] = []thread{
+						{
+							w: [2]rune{c, c + 1},
+							q: []uint16{uint16(n + 1)},
+						},
+					}
+					epsilon[n] = []uint16{}
+					continue
 				}
-				epsilon[n] = []uint16{}
+				return nil, err
 			}
 			self.machine = &nFA{
 				initial:    0,
-				accept:     []uint16{uint16(len(self.literal))},
+				accept:     []uint16{uint16(utf8.RuneCountInString(self.literal))},
 				epsilon:    epsilon,
 				transition: transition,
 			}
@@ -859,7 +847,7 @@ func ReadPattern(reader *source.Reader, precedence int) (Pattern, error) {
 		if reader.ReadOnly("(") {
 			expression, diagnostic := ReadPattern(reader, PrecAll)
 			if diagnostic == nil {
-				if reader.ReadMeaningful(")") {
+				if reader.ReadSyntax(")") {
 					return readTrailing(reader, expression, precedence)
 				}
 				return nil, source.Diagnose("Expected ')'", reader.PointExcerpt())
@@ -911,7 +899,7 @@ func ReadPattern(reader *source.Reader, precedence int) (Pattern, error) {
 }
 
 func readInterval(reader *source.Reader, left *literal) (Pattern, error) {
-	if reader.ReadMeaningful("-") {
+	if reader.ReadSyntax(":") {
 		if utf8.RuneCountInString(left.literal) == 1 {
 			right, err := readLiteral(reader)
 			if err == nil {
@@ -926,14 +914,14 @@ func readInterval(reader *source.Reader, left *literal) (Pattern, error) {
 					}, nil
 				}
 				return nil, source.Diagnostic{
-					Message: "The pattern must be assignable to '|\\u0000|-|\\u10FFFF|' in order to appear in an interval",
+					Message: "The literal must be assignable to 'w' in order to appear in an interval",
 					Excerpt: right.excerpt,
 				}
 			}
 			return nil, err
 		}
 		return nil, source.Diagnostic{
-			Message: "The pattern must be assignable to '|\\u0000|-|\\u10FFFF|' in order to appear in an interval",
+			Message: "The literal must be assignable to 'w' in order to appear in an interval",
 			Excerpt: left.excerpt,
 		}
 	}
@@ -1003,7 +991,7 @@ func readLiteral(reader *source.Reader) (*literal, error) {
 }
 
 func readTrailing(reader *source.Reader, pattern Pattern, precedence int) (Pattern, error) {
-	if precedence >= PrecEll && reader.ReadMeaningful("...") {
+	if precedence >= PrecEll && reader.ReadSyntax("...") {
 		position := reader.Position()
 		excerpt := pattern.Origin().Expand(position)
 		return readTrailing(reader, &ellipsis{
@@ -1012,7 +1000,7 @@ func readTrailing(reader *source.Reader, pattern Pattern, precedence int) (Patte
 			machine: nil,
 		}, precedence)
 	}
-	if precedence >= PrecAnd && reader.ReadMeaningful("&") {
+	if precedence >= PrecAnd && reader.ReadSyntax("&") {
 		other, diagnostic := ReadPattern(reader, PrecAnd)
 		if diagnostic == nil {
 			excerpt := pattern.Origin().Union(*other.Origin())
@@ -1025,7 +1013,7 @@ func readTrailing(reader *source.Reader, pattern Pattern, precedence int) (Patte
 		}
 		return nil, diagnostic
 	}
-	if precedence >= PrecMul && reader.ReadMeaningful("*") {
+	if precedence >= PrecMul && reader.ReadSyntax("*") {
 		factor, diagnostic := ReadPattern(reader, PrecMul)
 		if diagnostic == nil {
 			excerpt := pattern.Origin().Union(*factor.Origin())
@@ -1038,13 +1026,30 @@ func readTrailing(reader *source.Reader, pattern Pattern, precedence int) (Patte
 		}
 		return nil, diagnostic
 	}
-	if precedence >= PrecAdd && reader.ReadMeaningful("+") {
+	if precedence >= PrecAdd && reader.ReadSyntax("+") {
 		summand, diagnostic := ReadPattern(reader, PrecAdd)
 		if diagnostic == nil {
 			excerpt := pattern.Origin().Union(*summand.Origin())
 			return readTrailing(reader, &sum{
 				left:    pattern,
 				right:   summand,
+				excerpt: &excerpt,
+				machine: nil,
+			}, precedence)
+		}
+		return nil, diagnostic
+	}
+	if precedence >= PrecAdd && reader.ReadSyntax("-") {
+		subtrahend, diagnostic := ReadPattern(reader, PrecAdd)
+		if diagnostic == nil {
+			excerpt := pattern.Origin().Union(*subtrahend.Origin())
+			return readTrailing(reader, &intersection{
+				left: pattern,
+				right: &complement{
+					pattern: subtrahend,
+					excerpt: nil,
+					machine: nil,
+				},
 				excerpt: &excerpt,
 				machine: nil,
 			}, precedence)
