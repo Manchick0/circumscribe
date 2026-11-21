@@ -3,10 +3,10 @@ package sgr
 import "fmt"
 
 const (
-	Reference = 0xee80ff
-	Literal   = 0xffe18d
-	Impure    = 0xff729d
-	Pure      = 0xffe18d
+	Dragonfruit = 0xee80ff
+	Lemon       = 0xffe18d
+	Cranberry   = 0xff729d
+	Pebble      = 0x454545
 )
 
 const Terminate = "\033[39m"

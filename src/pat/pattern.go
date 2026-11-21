@@ -64,7 +64,7 @@ func (self *interval) Origin() *source.Excerpt {
 
 func (self *interval) Pretty(color bool, precedence int) string {
 	if color {
-		return fmt.Sprintf("%s-%s", sgr.Escape(fmt.Sprintf("|\\u%04x|", self.interval[0]), sgr.Literal), sgr.Escape(fmt.Sprintf("|\\u%04x|", self.interval[1]-1), sgr.Literal))
+		return fmt.Sprintf("%s-%s", sgr.Escape(fmt.Sprintf("|\\u%04x|", self.interval[0]), sgr.Lemon), sgr.Escape(fmt.Sprintf("|\\u%04x|", self.interval[1]-1), sgr.Lemon))
 	}
 	return fmt.Sprintf("|\\u%04x|-|\\u%04x|", self.interval[0], self.interval[1]-1)
 }
@@ -132,7 +132,7 @@ func (self *literal) Origin() *source.Excerpt {
 
 func (self *literal) Pretty(color bool, precendence int) string {
 	if color {
-		return sgr.Escape(self.String(), sgr.Literal)
+		return sgr.Escape(self.String(), sgr.Lemon)
 	}
 	return self.String()
 }
@@ -440,7 +440,7 @@ func (self *reference) Origin() *source.Excerpt {
 
 func (self *reference) Pretty(color bool, precdence int) string {
 	if color {
-		return sgr.Escape(self.identifier, sgr.Reference)
+		return sgr.Escape(self.identifier, sgr.Dragonfruit)
 	}
 	return self.identifier
 }
@@ -1091,7 +1091,7 @@ func readTrailing(reader *source.Reader, pattern Pattern, precedence int) (Patte
 		}
 		return nil, diagnostic
 	}
-	if precedence >= PrecAdd && reader.ReadSyntax("-") {
+	if precedence >= PrecAdd && reader.ReadSyntax("\\") {
 		subtrahend, diagnostic := ReadPattern(reader, PrecAdd)
 		if diagnostic == nil {
 			excerpt := pattern.Origin().Union(*subtrahend.Origin())

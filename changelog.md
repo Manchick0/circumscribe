@@ -1,3 +1,14 @@
+# circumscribe 0.3.0
+> November 21, 2026
+
+Adjusted 'circumscribe.py' to use 'CIRCUMSCRIBE_ROOT' instead
+of a command-line argument, changed the syntax for pattern
+subtraction, and colored the gutter in diagnostics.
+
+- The pattern difference syntax was changed from 'a - b'
+  to 'a \ b' in order to complement the previous change
+  of intervals.
+
 # circumscribe 0.2.0
 > November 21, 2026
 

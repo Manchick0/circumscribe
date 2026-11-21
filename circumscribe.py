@@ -1,5 +1,6 @@
 #!usr/bin/env python
 import sys
+import os
 import subprocess
 import pathlib
 
@@ -9,15 +10,16 @@ import pathlib
 # ---
 # I personally enjoy having third party
 # tools installed in /opt, hence the default.
-# You may, however, pass a different path as
-# an argument to the script.
+# You may, however, set a different path
+# with CIRCUMSCRIBE_ROOT.
 #
 DEFAULT = "/opt/circumscribe"
 REPOSITORY = "https://github.com/Manchick0/circumscribe.git"
+ROOT = "CIRCUMSCRIBE_ROOT"
 
 def main() -> None:
     if sys.platform == "linux" or sys.platform == "darwin":
-        directory = pathlib.Path(root())
+        directory = pathlib.Path(os.getenv(ROOT, DEFAULT))
         if directory.exists():
             subprocess.run(["git", "pull"], check=True, cwd=directory)
             subprocess.run(["make", "circumscribe"], check=True, cwd=directory)
@@ -28,11 +30,6 @@ def main() -> None:
         return ()
     sys.exit("'circumscribe.py' does not support Windows.")
     return ()
-
-def root() -> str:
-    if len(sys.argv) > 0:
-        return sys.argv[1]
-    return DEFAULT
 
 if __name__ == "__main__":
     main()

@@ -167,9 +167,9 @@ func main() {
 										var buffer strings.Builder
 										fmt.Fprint(&buffer, func() string {
 											if pure {
-												return sgr.Escape(identifier, sgr.Pure)
+												return sgr.Escape(identifier, sgr.Lemon)
 											}
-											return sgr.Escape(identifier, sgr.Impure)
+											return sgr.Escape(identifier, sgr.Cranberry)
 										}())
 										fmt.Fprint(&buffer, " :: ")
 										fmt.Fprint(&buffer, "(")
@@ -191,7 +191,7 @@ func main() {
 								fmt.Fprintln(os.Stderr, err)
 								os.Exit(1)
 							}
-							fmt.Fprintln(os.Stderr, source.Diagnose(fmt.Sprintf("circumscribe: Could not resolve identifier '%s'", identifier), reader.Excerpt(position)))
+							fmt.Fprintln(os.Stderr, source.Diagnose(fmt.Sprintf("Could not resolve identifier '%s'", identifier), reader.Excerpt(position)))
 							os.Exit(1)
 						}
 						fmt.Fprintln(os.Stderr, err)

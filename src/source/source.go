@@ -1,6 +1,7 @@
 package source
 
 import (
+	"circumscribe/sgr"
 	"fmt"
 	"math"
 	"strconv"
@@ -311,9 +312,9 @@ func (self Excerpt) Render() string {
 			int(math.Log10(float64(self.interval[1].line)))+1,
 		)
 		if line == 0 {
-			return fmt.Sprintf(" %s | ", strings.Repeat(" ", length))
+			return fmt.Sprintf("%s %s | %s", sgr.Sequence(sgr.Pebble), strings.Repeat(" ", length), sgr.Terminate)
 		}
-		return fmt.Sprintf(" %*d | ", length, line)
+		return fmt.Sprintf("%s %*d | %s", sgr.Sequence(sgr.Pebble), length, line, sgr.Terminate)
 	}
 	begin := max(strings.LastIndex(self.source.content[:self.interval[0].absolute], "\n")+1, 0)
 	end := func() int {
