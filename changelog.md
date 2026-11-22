@@ -1,3 +1,9 @@
+# circumscribe 0.4.1
+> November 22, 2026
+
+Resolve issues with unnamed patterns within a grammar
+and alter the standard seqhead and -tail implementation.
+
 # circumscribe 0.4.0
 > November 22, 2026
 

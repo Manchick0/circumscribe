@@ -198,7 +198,7 @@ def chr(point: natural) -> w:
 # Returns the firstmost character
 # of the given source:
 #
-# head(|Hello, World!|) == |H|
+# head(|Hello, World!|) = |H|
 #
 def head(source: any) -> w + e:
     head'(source)
@@ -210,18 +210,12 @@ def head(source: any) -> w + e:
 # sequence, which is the part up
 # until the first unit separator:
 #
-# seqhead(|foo<us>bar<us>baz|) == |foo|
+# seqhead(|foo<us>bar<us>baz|) = |foo|
 #
 def seqhead(sequence: any) -> any:
-    seqhead'(sequence, ||)
-
-def seqhead'(sequence: any, buffer: any) -> any:
-    if meaningful(sequence):
-        with head(sequence) as head:
-            if head = us:
-                buffer
-            else seqhead'(tail(sequence), |<buffer><head>|)
-    else buffer
+    match |<head: (w \ us)...><us><any>| in sequence:
+        head
+    else sequence
 
 #
 # tail(source) @since 0.1.0 
@@ -229,7 +223,7 @@ def seqhead'(sequence: any, buffer: any) -> any:
 # Returns the tail of the given
 # source:
 #
-# tail(|Hello, World!|) == |ello, World!|
+# tail(|Hello, World!|) = |ello, World!|
 #
 def tail(source: any) -> any:
     tail'(source)
@@ -241,14 +235,11 @@ def tail(source: any) -> any:
 # sequence, which is the part
 # after the first unit separator:
 #
-# seqtail(|foo<us>bar<us>baz|) == |bar<us>baz|
+# seqtail(|foo<us>bar<us>baz|) = |bar<us>baz|
 #
 def seqtail(sequence: any) -> any:
-    if meaningful(sequence):
-        with head(sequence) as head:
-            if head = us:
-                tail(sequence)
-            else seqtail(tail(sequence))
+    match |<(w \ us)...><us><tail: any>| in sequence:
+        tail
     else ||
 
 #

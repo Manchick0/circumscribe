@@ -158,7 +158,7 @@ func ReadGrammar(reader *source.Reader) (Grammar, error) {
 						return nil, err
 					}
 					reader.Backtrack(stamp)
-					return nil, err
+					return nil, nil
 				}()
 				if err == nil {
 					pattern, err := ReadPattern(reader, PrecAll)
