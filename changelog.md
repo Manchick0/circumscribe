@@ -1,3 +1,18 @@
+# circumscribe 0.4.2
+> November 22, 2026
+
+Resolve issues with product patterns and complete
+the ussage message with circumscribe infer, introduce
+the '--standard' flag.
+
+- The standard flag, aliased '-std' or '-awk', forces
+  circumscribe to only load the standard library, not
+  requiring '.circumscribe' to exist:
+
+  ```bash
+  circumscribe evaluate -awk 'length(|abc|) * |5|'
+  ```
+
 # circumscribe 0.4.1
 > November 22, 2026
 

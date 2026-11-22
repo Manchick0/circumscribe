@@ -32,6 +32,9 @@ substitute <path>      Substitute either the provided file or all circumscribed
                        [-c <path>]          Read definitions from the given path
                        [--context <path>]   instead of the usual '.circumscribe'.
 
+                       [-std | -awk]        Only use the standard library, do not
+                       [--standard]         require '.circumscribe'.
+
                        [-m | --mirror]      When substituting a directory, copy
                                             the rest of the directory unchanged.
 
@@ -43,6 +46,18 @@ evaluate <expression>  Evaluate the given expression, with regard to the definit
 
                        [-c <path>]         Read definitions from the given path
                        [--context <path>]  instead of the usual '.circumscribe'.
+
+                       [-std | -awk]        Only use the standard library, do not
+                       [--standard]         require '.circumscribe'.
+
+infer <identifier>     Infer the type the given macro, with regard to the definitions 
+                       in the appropriate context file.
+
+                       [-c <path>]         Read definitions from the given path
+                       [--context <path>]  instead of the usual '.circumscribe'.
+
+                       [-std | -awk]        Only use the standard library, do not
+                       [--standard]         require '.circumscribe'.
 
 init                   Initialize a '.circumscribe' file in the current working
                        directory.
@@ -385,11 +400,14 @@ func substitute(name string, content string, envm env.Environment[ast.Macro], en
 // from the appropriate context.
 // ---
 func initEnvironment(flags Flags) (env.Environment[ast.Macro], env.Environment[pat.Pattern], error) {
-	cwd, err := os.Getwd()
+	stdm, stdp, err := stdlib()
+	if flags.standard {
+		return stdm, stdp, err
+	}
 	if err == nil {
-		context, err := flags.ResolveContext()
+		cwd, err := os.Getwd()
 		if err == nil {
-			stdm, stdp, err := stdlib()
+			context, err := flags.ResolveContext()
 			if err == nil {
 				envm, envp := env.Environment[ast.Macro]{
 					Root:    nil,
@@ -580,8 +598,8 @@ func root() (string, error) {
 // options: those are collected separately.
 type Flags struct {
 	output    *string  // The output path, or nil if none was given         (substitute)
-	context   []string // The content file(s), empty if none were given     (evaluate, substitute, init)
-	exclude   *string  // The exclude pattern, or nil if none was given     (substitute)
+	context   []string // The content file(s), empty if none were given     (evaluate, substitute, infer init)
+	standard  bool     // Whether to only include the standard library      (evaluate, substitute, infer)
 	mirror    bool     // Whether to mirror the rest of the directory       (substitute)
 	nonewline bool     // Whether to not append a newline  					(substitute)
 	force     bool     // Whether to create .circumscribe if one is present (init)
@@ -677,13 +695,6 @@ func parseArgs(args []string) ([]string, Flags, error) {
 				return options, flags, err
 			}
 			return options, flags, fmt.Errorf("circumscribe: '%s' requires a positional argument", argument)
-		case "--exclude", "-x":
-			position++
-			if position < len(args) {
-				flags.exclude = &args[position]
-				continue
-			}
-			return options, flags, fmt.Errorf("circumscribe: '%s' requires a positional argument", argument)
 		case "--mirror", "-m":
 			flags.mirror = true
 			continue
@@ -692,6 +703,9 @@ func parseArgs(args []string) ([]string, Flags, error) {
 			continue
 		case "--no-newline", "-n":
 			flags.nonewline = true
+			continue
+		case "--standard", "-std", "-awk":
+			flags.standard = true
 			continue
 		case "--empty", "-e":
 			flags.empty = true

@@ -232,8 +232,12 @@ func (self *product) Compile(environment env.Environment[Pattern], branch env.Br
 					deterministic: nil,
 				}
 				for _, accept := range left.accept {
-					self.machine.transition[accept] = self.machine.transition[right.initial]
-					self.machine.epsilon[accept] = self.machine.epsilon[right.initial]
+					// The transitions are empty, hence we
+					// can write over them. We explicitly
+					// replace the transition table because
+					// who the fuck stops us?
+					self.machine.transition[accept] = []thread{}
+					self.machine.epsilon[accept] = []uint16{right.initial}
 				}
 				return self.machine, nil
 			}
@@ -575,12 +579,12 @@ func (self *nFA) IsMeaningful() bool {
 					visited[qq] = true
 				}
 			}
-			for _, q := range self.epsilon[q] {
-				if _, ok := visited[q]; ok {
+			for _, qq := range self.epsilon[q] {
+				if _, ok := visited[qq]; ok {
 					continue
 				}
-				buffer = append(buffer, q)
-				visited[q] = true
+				buffer = append(buffer, qq)
+				visited[qq] = true
 			}
 			continue
 		}
@@ -778,7 +782,7 @@ func (self *nFA) Determinize() *nFA {
 }
 
 func (self *nFA) String() string {
-	return fmt.Sprintf("initial = %d -> accept = %v transition = %v", self.initial, self.accept, self.transition)
+	return fmt.Sprintf("initial = %d -> accept = %v eps %v transition = %v", self.initial, self.accept, self.epsilon, self.transition)
 }
 
 // Compute the set of reachable states from

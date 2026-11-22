@@ -408,11 +408,14 @@ func Compile(self Expression, envm env.Environment[Macro], envp env.Environment[
 		_, err := Compile(self.Source, envm, envp, branch)
 		if err == nil {
 			enve, err := Under(self.Source, pat.Complement(func() pat.Pattern {
-				buffer := pat.StdNever // Additive identity
-				for _, option := range self.Branches {
-					buffer = pat.Sum(buffer, option.Grammar.Pattern())
+				if len(self.Branches) > 0 {
+					buffer := self.Branches[0].Grammar.Pattern()
+					for _, option := range self.Branches[1:] {
+						buffer = pat.Sum(buffer, option.Grammar.Pattern())
+					}
+					return buffer
 				}
-				return buffer
+				return pat.StdNever
 			}()), envm, envp, branch)
 			other, err := Compile(self.Otherwise, enve, env.Environment[pat.Pattern]{
 				Root:    envp.Root,

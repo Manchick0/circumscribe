@@ -212,7 +212,7 @@ def head(source: any) -> w + e:
 #
 # seqhead(|foo<us>bar<us>baz|) = |foo|
 #
-def seqhead(sequence: any) -> any:
+def seqhead(sequence: any) -> (w \ us)...:
     match |<head: (w \ us)...><us><any>| in sequence:
         head
     else sequence
