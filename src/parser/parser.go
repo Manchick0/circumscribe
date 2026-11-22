@@ -236,7 +236,7 @@ func ReadExpression(reader *source.Reader, precedence int, escape bool) (ast.Exp
 			if reader.ReadSyntax("(") {
 				var buffer []ast.Expression
 				if reader.SkipWhitespace() && reader.ReadOnly(")") {
-					return ReadTrailing(reader, ast.Application{
+					return ReadTrailing(reader, ast.Call{
 						Identifier: identifier,
 						Arguments:  []ast.Expression{},
 						Excerpt:    reader.Excerpt(position),
@@ -251,7 +251,7 @@ func ReadExpression(reader *source.Reader, precedence int, escape bool) (ast.Exp
 							continue
 						}
 						if reader.ReadSyntax(")") {
-							return ReadTrailing(reader, ast.Application{
+							return ReadTrailing(reader, ast.Call{
 								Identifier: identifier,
 								Arguments:  buffer,
 								Excerpt:    reader.Excerpt(position),
@@ -264,7 +264,7 @@ func ReadExpression(reader *source.Reader, precedence int, escape bool) (ast.Exp
 				}
 				return nil, source.Diagnose("Expected ')'", reader.PointExcerpt())
 			}
-			return ReadTrailing(reader, ast.Application{
+			return ReadTrailing(reader, ast.Call{
 				Identifier: identifier,
 				Arguments:  []ast.Expression{},
 				Excerpt:    reader.Excerpt(position),
@@ -504,20 +504,24 @@ func ReadLiteral(reader *source.Reader) (ast.Expression, error) {
 			var buffer strings.Builder
 			for reader.CanRead() {
 				if reader.ReadOnly("|") {
-					children = append(children, ast.Literal{
-						Literal: buffer.String(),
-						Excerpt: reader.Excerpt(position),
-					})
+					if len(children) == 0 || buffer.Len() > 0 {
+						children = append(children, ast.Literal{
+							Literal: buffer.String(),
+							Excerpt: reader.Excerpt(position),
+						})
+					}
 					return ast.Snippet{
 						Children: children,
 						Excerpt:  children[0].Origin().Expand(reader.Position()),
 					}, nil
 				}
 				if reader.ReadOnly("<") {
-					children = append(children, ast.Literal{
-						Literal: buffer.String(),
-						Excerpt: reader.Excerpt(position),
-					})
+					if buffer.Len() > 0 {
+						children = append(children, ast.Literal{
+							Literal: buffer.String(),
+							Excerpt: reader.Excerpt(position),
+						})
+					}
 					expression, err := ReadExpression(reader, All, true)
 					if err == nil {
 						children = append(children, expression)

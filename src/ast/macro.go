@@ -99,7 +99,7 @@ var (
 			}
 			return args[0], nil
 		},
-		Pattern: pat.StdW,
+		Pattern: pat.Sum(pat.StdW, pat.StdE),
 		Pure:    true,
 	}
 	// env()
@@ -249,38 +249,71 @@ type Source struct {
 	Excerpt    source.Excerpt
 }
 
+// Evaluate the macro in the given
+// environment with the provided
+// arguments.
+// ---
+// Unless the recursion limit is reached,
+// the body of the macro is evaluated in
+// an environment with all parameters
+// bound to their values.
+//
+// If a 'bounce' is returned, the delegate
+// body is re-evaluated in an appropriately
+// modified environment until a snippet
+// is returned.
 func (self *Source) Evaluate(envm env.Environment[Macro], envp env.Environment[pat.Pattern], arguments []string, recursion int) (string, error) {
 	if recursion < rlimit {
-		buffer := env.Layer[Macro]{}
-		for n, parameter := range self.Params {
-			buffer[parameter.Name] = Constant{
-				identifier: parameter.Name,
-				constant:   arguments[n],
-			}
-		}
-		return Evaluate(self.Body, env.Environment[Macro]{
-			Root:    envm.Root,
-			Parent:  envm.Root,
-			Entries: buffer,
+		body, envm, envp := self.Body, env.Environment[Macro]{
+			Root:   envm.Root,
+			Parent: envm.Root,
+			Entries: func() env.Layer[Macro] {
+				buffer := env.Layer[Macro]{}
+				for n, parameter := range self.Params {
+					buffer[parameter.Name] = Constant{
+						identifier: parameter.Name,
+						constant:   arguments[n],
+					}
+				}
+				return buffer
+			}(),
 		}, env.Environment[pat.Pattern]{
 			Root:    envp.Root,
 			Parent:  envp.Root,
 			Entries: env.Layer[pat.Pattern]{},
-		}, recursion+1)
+		}
+		for {
+			snippet, bounce, err := Evaluate(body, envm, envp, recursion+1)
+			if bounce != nil {
+				delegate := bounce.Delegate.(*Source)
+				body, envm = delegate.Body, env.Environment[Macro]{
+					Root:   envm.Root,
+					Parent: envm.Root,
+					Entries: func() env.Layer[Macro] {
+						buffer := env.Layer[Macro]{}
+						for n, parameter := range delegate.Params {
+							buffer[parameter.Name] = Constant{
+								identifier: parameter.Name,
+								constant:   bounce.Arguments[n],
+							}
+						}
+						return buffer
+					}(),
+				}
+				continue
+			}
+			return snippet, err
+		}
 	}
-	return "", fmt.Errorf("Encountered an extensively deep recursion chain (>=512)")
-}
-
-func (self *Source) Parameters() []Parameter {
-	return self.Params
+	return "", fmt.Errorf("Encountered an extensively deep recursion chain (>=%d)", rlimit)
 }
 
 func (self *Source) Infer(envm env.Environment[Macro], envp env.Environment[pat.Pattern], branch env.Branch[Macro]) (pat.Pattern, error) {
-	if self.Pattern == nil {
+	if self.Pure == nil && self.Pattern == nil {
 		if !branch.Contains(self) {
 			diagnostic := self.Compile(envm, envp, branch)
 			if diagnostic == nil {
-				return self.Infer(envm, envp, branch)
+				return self.Pattern, nil
 			}
 			return nil, diagnostic
 		}
@@ -289,52 +322,49 @@ func (self *Source) Infer(envm env.Environment[Macro], envp env.Environment[pat.
 	return self.Pattern, nil
 }
 
+// Compile the macro in the given
+// environment.
+// ---
 func (self *Source) Compile(envm env.Environment[Macro], envp env.Environment[pat.Pattern], branch env.Branch[Macro]) error {
-	pattern, diagnostic := Compile(self.Body, env.Environment[Macro]{
-		Root:   envm.Root,
-		Parent: envm.Root,
-		Entries: func() env.Layer[Macro] {
-			buffer := env.Layer[Macro]{}
-			for _, parameter := range self.Params {
-				buffer[parameter.Name] = Placeholder{
-					identifier: parameter.Name,
-					pattern:    parameter.Pattern,
-				}
-			}
-			return buffer
-		}(),
-	}, env.Environment[pat.Pattern]{
-		Root:    envp.Root,
-		Parent:  envp.Root,
-		Entries: env.Layer[pat.Pattern]{},
-	}, env.Branch[Macro]{
-		Parent: &branch,
-		Entry:  self,
-	})
-	if diagnostic == nil {
-		if self.Pattern != nil {
-			left, err := pattern.Compile(envp, env.Branch[pat.Pattern]{})
-			if err == nil {
-				right, err := self.Pattern.Compile(envp, env.Branch[pat.Pattern]{})
-				if err == nil {
-					complement := right.Complement()
-					intersection := left.Intersection(complement)
-					if intersection.IsMeaningful() {
-						return source.Diagnostic{
-							Message: fmt.Sprintf("Pattern '%s' is not assignable to '%s'", pattern, self.Pattern),
-							Excerpt: self.Body.Origin(),
-						}
+	if self.Pure == nil {
+		pattern, err := Expect(self.Body, env.Environment[Macro]{
+			Root:   envm.Root,
+			Parent: envm.Root,
+			Entries: func() env.Layer[Macro] {
+				buffer := env.Layer[Macro]{}
+				for _, parameter := range self.Params {
+					buffer[parameter.Name] = Placeholder{
+						identifier: parameter.Name,
+						pattern:    parameter.Pattern,
 					}
-					return nil
 				}
-				return err
+				return buffer
+			}(),
+		}, env.Environment[pat.Pattern]{
+			Root:    envp.Root,
+			Parent:  envp.Root,
+			Entries: env.Layer[pat.Pattern]{},
+		}, env.Branch[Macro]{
+			Parent: &branch,
+			Entry:  self,
+		}, self.Pattern)
+		if err == nil {
+			pure, err := self.IsPure(envm, envp, branch)
+			if err == nil {
+				// If not annotated, use the
+				// inferred pattern.
+				if self.Pattern == nil {
+					self.Pattern = pattern
+				}
+				self.Body = Tail(self.Body, envm)
+				self.Pure = &pure
+				return nil
 			}
 			return err
 		}
-		self.Pattern = pattern
-		return nil
+		return err
 	}
-	return diagnostic
+	return nil
 }
 
 func (self *Source) IsPure(envm env.Environment[Macro], envp env.Environment[pat.Pattern], branch env.Branch[Macro]) (bool, error) {
@@ -343,7 +373,7 @@ func (self *Source) IsPure(envm env.Environment[Macro], envp env.Environment[pat
 			// "pure until proven otherwise"
 			return true, nil
 		}
-		pure, diagnostic := IsPure(self.Body, env.Environment[Macro]{
+		return IsPure(self.Body, env.Environment[Macro]{
 			Root:   envm.Root,
 			Parent: envm.Root,
 			Entries: func() env.Layer[Macro] {
@@ -364,13 +394,12 @@ func (self *Source) IsPure(envm env.Environment[Macro], envp env.Environment[pat
 			Parent: &branch,
 			Entry:  self,
 		})
-		if diagnostic == nil {
-			self.Pure = &pure
-			return pure, nil
-		}
-		return false, diagnostic
 	}
 	return *self.Pure, nil
+}
+
+func (self *Source) Parameters() []Parameter {
+	return self.Params
 }
 
 func (self Source) Name() string {

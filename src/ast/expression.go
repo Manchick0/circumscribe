@@ -16,7 +16,7 @@ import (
 // does not inherently limit recursion,
 // but merely the number of functions in
 // a single evaluation of an expression.
-const rlimit = 512
+const rlimit = 1024
 
 // An expression.
 // ---
@@ -27,29 +27,37 @@ type Expression interface {
 	expr()
 }
 
+type Bounce struct {
+	Delegate  Macro
+	Arguments []string
+}
+
 // Compile the given expression, expecting
 // it to conform to the given pattern.
 // ---
 func Expect(self Expression, envm env.Environment[Macro], envp env.Environment[pat.Pattern], branch env.Branch[Macro], pattern pat.Pattern) (pat.Pattern, error) {
 	from, err := Compile(self, envm, envp, branch)
 	if err == nil {
-		left, err := from.Compile(envp, env.Branch[pat.Pattern]{})
-		if err == nil {
-			right, err := pattern.Compile(envp, env.Branch[pat.Pattern]{})
+		if pattern != nil {
+			left, err := from.Compile(envp, env.Branch[pat.Pattern]{})
 			if err == nil {
-				complement := right.Complement()
-				intersection := left.Intersection(complement)
-				if intersection.IsMeaningful() {
-					return nil, source.Diagnostic{
-						Message: fmt.Sprintf("Pattern '%s' is not assignable to '%s'", from, pattern),
-						Excerpt: self.Origin(),
+				right, err := pattern.Compile(envp, env.Branch[pat.Pattern]{})
+				if err == nil {
+					complement := right.Complement()
+					intersection := left.Intersection(complement)
+					if intersection.IsMeaningful() {
+						return nil, source.Diagnostic{
+							Message: fmt.Sprintf("Pattern '%s' is not assignable to '%s'", from, pattern),
+							Excerpt: self.Origin(),
+						}
 					}
+					return from, nil
 				}
-				return from, nil
+				return nil, err
 			}
 			return nil, err
 		}
-		return nil, err
+		return from, nil
 	}
 	return nil, err
 }
@@ -61,45 +69,61 @@ func Expect(self Expression, envm env.Environment[Macro], envp env.Environment[p
 // the given expression. If an error occurs,
 // it is returned instead. An expression must
 // be compiled before it may be evaluated.
-func Evaluate(self Expression, envm env.Environment[Macro], envp env.Environment[pat.Pattern], recursion int) (string, error) {
+func Evaluate(self Expression, envm env.Environment[Macro], envp env.Environment[pat.Pattern], recursion int) (string, *Bounce, error) {
 	if self, ok := self.(Literal); ok {
-		return self.Literal, nil
+		return self.Literal, nil, nil
 	}
 	if self, ok := self.(Snippet); ok {
 		var buffer strings.Builder
 		for _, child := range self.Children {
-			snippet, diagnostic := Evaluate(child, envm, envp, recursion)
-			if diagnostic == nil {
+			snippet, bounce, diagnostic := Evaluate(child, envm, envp, recursion)
+			if diagnostic == nil && bounce == nil {
 				buffer.WriteString(snippet)
 				continue
 			}
-			return "", diagnostic
+			return snippet, bounce, diagnostic
 		}
-		return buffer.String(), nil
+		return buffer.String(), nil, nil
 	}
-	if self, ok := self.(Application); ok {
+	if self, ok := self.(Call); ok {
 		var buffer []string
 		for _, argument := range self.Arguments {
-			snippet, diagnostic := Evaluate(argument, envm, envp, recursion)
-			if diagnostic == nil {
+			snippet, bounce, diagnostic := Evaluate(argument, envm, envp, recursion)
+			if diagnostic == nil && bounce == nil {
 				buffer = append(buffer, snippet)
 				continue
 			}
-			return "", diagnostic
+			return "", bounce, diagnostic
 		}
 		entry, _ := envm.Traverse(self.Identifier)
 		snippet, err := entry.Evaluate(envm, envp, buffer, recursion)
 		if err != nil {
 			if _, ok := err.(source.Diagnostic); ok {
-				return snippet, err
+				return "", nil, err
 			}
-			return snippet, source.Diagnose(err.Error(), self.Excerpt)
+			return "", nil, source.Diagnose(err.Error(), self.Excerpt)
 		}
-		return snippet, nil
+		return snippet, nil, nil
+	}
+	if self, ok := self.(Jump); ok {
+		var buffer []string
+		for _, argument := range self.Arguments {
+			snippet, bounce, diagnostic := Evaluate(argument, envm, envp, recursion)
+			if diagnostic == nil && bounce == nil {
+				buffer = append(buffer, snippet)
+				continue
+			}
+			return "", bounce, diagnostic
+		}
+		delegate, _ := envm.Traverse(self.Identifier)
+		return "", &Bounce{
+			Delegate:  delegate,
+			Arguments: buffer,
+		}, nil
 	}
 	if self, ok := self.(Switch); ok {
-		source, diagnostic := Evaluate(self.Source, envm, envp, recursion)
-		if diagnostic == nil {
+		source, bounce, diagnostic := Evaluate(self.Source, envm, envp, recursion)
+		if diagnostic == nil && bounce == nil {
 			for _, branch := range self.Branches {
 				layer := branch.Grammar.Match(source)
 				if layer != nil {
@@ -125,21 +149,21 @@ func Evaluate(self Expression, envm env.Environment[Macro], envp env.Environment
 			}
 			return Evaluate(self.Otherwise, envm, envp, recursion)
 		}
-		return source, diagnostic
+		return source, bounce, diagnostic
 	}
 	if self, ok := self.(If); ok {
-		condition, diagnostic := Evaluate(self.Condition, envm, envp, recursion)
-		if diagnostic == nil {
+		condition, bounce, diagnostic := Evaluate(self.Condition, envm, envp, recursion)
+		if diagnostic == nil && bounce == nil {
 			if condition == "true" {
 				return Evaluate(self.Body, envm, envp, recursion)
 			}
 			return Evaluate(self.Otherwise, envm, envp, recursion)
 		}
-		return condition, diagnostic
+		return condition, bounce, diagnostic
 	}
 	if self, ok := self.(With); ok {
-		snippet, err := Evaluate(self.Expression, envm, envp, recursion)
-		if err == nil {
+		snippet, bounce, err := Evaluate(self.Expression, envm, envp, recursion)
+		if err == nil && bounce == nil {
 			return Evaluate(self.Body, env.Environment[Macro]{
 				Parent: &envm,
 				Root:   envm.Root,
@@ -155,177 +179,163 @@ func Evaluate(self Expression, envm env.Environment[Macro], envp env.Environment
 				Entries: env.Layer[pat.Pattern]{},
 			}, recursion)
 		}
-		return snippet, err
+		return snippet, bounce, err
 	}
 	if self, ok := self.(Raise); ok {
-		snippet, err := Evaluate(self.Expression, envm, envp, recursion)
-		if err == nil {
-			return "", source.Diagnose(snippet, self.Excerpt)
+		snippet, bounce, err := Evaluate(self.Expression, envm, envp, recursion)
+		if err == nil && bounce == nil {
+			return "", nil, source.Diagnose(snippet, self.Excerpt)
 		}
-		return snippet, err
+		return snippet, bounce, err
 	}
 	if self, ok := self.(Compare); ok {
-		left, dignostic := Evaluate(self.Left, envm, envp, recursion)
-		if dignostic == nil {
-			right, diagnostic := Evaluate(self.Right, envm, envp, recursion)
-			if diagnostic == nil {
+		left, bounce, dignostic := Evaluate(self.Left, envm, envp, recursion)
+		if dignostic == nil && bounce == nil {
+			right, bounce, diagnostic := Evaluate(self.Right, envm, envp, recursion)
+			if diagnostic == nil && bounce == nil {
 				if left == right {
-					return "true", nil
+					return "true", nil, nil
 				}
-				return "false", nil
+				return "false", nil, nil
 			}
-			return right, diagnostic
+			return right, bounce, diagnostic
 		}
-		return left, dignostic
+		return left, bounce, dignostic
 	}
 	if self, ok := self.(And); ok {
-		left, diagnostic := Evaluate(self.Left, envm, envp, recursion)
-		if diagnostic == nil {
+		left, bounce, diagnostic := Evaluate(self.Left, envm, envp, recursion)
+		if diagnostic == nil && bounce == nil {
 			if left == "true" {
 				return Evaluate(self.Right, envm, envp, recursion)
 			}
-			return "false", nil
+			return "false", nil, nil
 		}
-		return left, diagnostic
+		return left, bounce, diagnostic
 	}
 	if self, ok := self.(Or); ok {
-		left, diagnostic := Evaluate(self.Left, envm, envp, recursion)
-		if diagnostic == nil {
+		left, bounce, diagnostic := Evaluate(self.Left, envm, envp, recursion)
+		if diagnostic == nil && bounce == nil {
 			if left == "false" {
 				return Evaluate(self.Right, envm, envp, recursion)
 			}
-			return "true", nil
+			return "true", nil, nil
 		}
-		return left, diagnostic
+		return left, bounce, diagnostic
 	}
 	if self, ok := self.(Not); ok {
-		snippet, err := Evaluate(self.Expression, envm, envp, recursion)
-		if err == nil {
+		snippet, bounce, err := Evaluate(self.Expression, envm, envp, recursion)
+		if err == nil && bounce == nil {
 			if snippet == "true" {
-				return "false", nil
+				return "false", nil, nil
 			}
-			return "true", nil
+			return "true", nil, nil
 		}
-		return snippet, err
+		return snippet, bounce, err
 	}
 	if self, ok := self.(Satisfies); ok {
-		snippet, err := Evaluate(self.Expression, envm, envp, recursion)
-		if err == nil {
+		snippet, bounce, err := Evaluate(self.Expression, envm, envp, recursion)
+		if err == nil && bounce == nil {
 			machine, _ := self.Pattern.Compile(envp, env.Branch[pat.Pattern]{})
 			if machine.Satisfies(snippet) {
-				return "true", nil
+				return "true", nil, nil
 			}
-			return "false", nil
+			return "false", nil, nil
 		}
-		return snippet, err
+		return snippet, bounce, err
 	}
 	if self, ok := self.(Add); ok {
-		left, diagnostic := Evaluate(self.Left, envm, envp, recursion)
-		if diagnostic == nil {
-			right, diagnostic := Evaluate(self.Right, envm, envp, recursion)
-			if diagnostic == nil {
+		left, bounce, diagnostic := Evaluate(self.Left, envm, envp, recursion)
+		if diagnostic == nil && bounce == nil {
+			right, bounce, diagnostic := Evaluate(self.Right, envm, envp, recursion)
+			if diagnostic == nil && bounce == nil {
 				left, _ := new(big.Int).SetString(left, 10)
 				right, _ := new(big.Int).SetString(right, 10)
 				sum := new(big.Int).Add(left, right)
-				return sum.Text(10), nil
+				return sum.Text(10), nil, nil
 			}
-			return right, diagnostic
+			return right, bounce, diagnostic
 		}
-		return left, diagnostic
+		return left, bounce, diagnostic
 	}
 	if self, ok := self.(Sub); ok {
-		left, diagnostic := Evaluate(self.Left, envm, envp, recursion)
-		if diagnostic == nil {
-			right, diagnostic := Evaluate(self.Right, envm, envp, recursion)
-			if diagnostic == nil {
+		left, bounce, diagnostic := Evaluate(self.Left, envm, envp, recursion)
+		if diagnostic == nil && bounce == nil {
+			right, bounce, diagnostic := Evaluate(self.Right, envm, envp, recursion)
+			if diagnostic == nil && bounce == nil {
 				left, _ := new(big.Int).SetString(left, 10)
 				right, _ := new(big.Int).SetString(right, 10)
 				if left.Cmp(right) > 0 {
 					dif := new(big.Int).Sub(left, right)
-					return dif.Text(10), nil
+					return dif.Text(10), nil, nil
 				}
-				return "0", nil
+				return "0", nil, nil
 			}
-			return right, diagnostic
+			return right, bounce, diagnostic
 		}
-		return left, diagnostic
+		return left, bounce, diagnostic
 	}
 	if self, ok := self.(Mul); ok {
-		left, diagnostic := Evaluate(self.Left, envm, envp, recursion)
-		if diagnostic == nil {
-			right, diagnostic := Evaluate(self.Right, envm, envp, recursion)
-			if diagnostic == nil {
+		left, bounce, diagnostic := Evaluate(self.Left, envm, envp, recursion)
+		if diagnostic == nil && bounce == nil {
+			right, bounce, diagnostic := Evaluate(self.Right, envm, envp, recursion)
+			if diagnostic == nil && bounce == nil {
 				left, _ := new(big.Int).SetString(left, 10)
 				right, _ := new(big.Int).SetString(right, 10)
 				product := new(big.Int).Mul(left, right)
-				return product.Text(10), nil
+				return product.Text(10), nil, nil
 			}
-			return right, diagnostic
+			return right, bounce, diagnostic
 		}
-		return left, diagnostic
+		return left, bounce, diagnostic
 	}
 	if self, ok := self.(Div); ok {
-		left, diagnostic := Evaluate(self.Left, envm, envp, recursion)
-		if diagnostic == nil {
-			right, diagnostic := Evaluate(self.Right, envm, envp, recursion)
-			if diagnostic == nil {
+		left, bounce, diagnostic := Evaluate(self.Left, envm, envp, recursion)
+		if diagnostic == nil && bounce == nil {
+			right, bounce, diagnostic := Evaluate(self.Right, envm, envp, recursion)
+			if diagnostic == nil && bounce == nil {
 				left, _ := new(big.Int).SetString(left, 10)
 				right, _ := new(big.Int).SetString(right, 10)
 				if left.Cmp(big.NewInt(0)) != 0 {
 					quotient := new(big.Int).Div(left, right)
-					return quotient.Text(10), nil
+					return quotient.Text(10), nil, nil
 				}
-				return "", source.Diagnose("Division by zero", self.Excerpt)
+				return "", nil, source.Diagnose("Division by zero", self.Excerpt)
 			}
-			return right, diagnostic
+			return right, bounce, diagnostic
 		}
-		return left, diagnostic
+		return left, bounce, diagnostic
 	}
 	if self, ok := self.(Less); ok {
-		left, err := Evaluate(self.Left, envm, envp, recursion)
-		if err == nil {
-			right, err := Evaluate(self.Right, envm, envp, recursion)
-			if err == nil {
+		left, bounce, err := Evaluate(self.Left, envm, envp, recursion)
+		if err == nil && bounce == nil {
+			right, bounce, err := Evaluate(self.Right, envm, envp, recursion)
+			if err == nil && bounce == nil {
 				left, _ := new(big.Int).SetString(left, 10)
 				right, _ := new(big.Int).SetString(right, 10)
 				if left.Cmp(right) < 0 {
-					return "true", nil
+					return "true", nil, nil
 				}
-				return "false", nil
+				return "false", nil, nil
 			}
-			return right, err
+			return right, bounce, err
 		}
-		return left, err
+		return left, bounce, err
 	}
 	if self, ok := self.(Greater); ok {
-		left, err := Evaluate(self.Left, envm, envp, recursion)
-		if err == nil {
-			right, err := Evaluate(self.Right, envm, envp, recursion)
-			if err == nil {
+		left, bounce, err := Evaluate(self.Left, envm, envp, recursion)
+		if err == nil && bounce == nil {
+			right, bounce, err := Evaluate(self.Right, envm, envp, recursion)
+			if err == nil && bounce == nil {
 				left, _ := new(big.Int).SetString(left, 10)
 				right, _ := new(big.Int).SetString(right, 10)
 				if left.Cmp(right) > 0 {
-					return "true", nil
+					return "true", nil, nil
 				}
-				return "false", nil
+				return "false", nil, nil
 			}
-			return right, err
+			return right, bounce, err
 		}
-		return left, err
-	}
-	if self, ok := self.(Add); ok {
-		left, diagnostic := Evaluate(self.Left, envm, envp, recursion)
-		if diagnostic == nil {
-			right, diagnostic := Evaluate(self.Right, envm, envp, recursion)
-			if diagnostic == nil {
-				left, _ := new(big.Int).SetString(left, 10)
-				right, _ := new(big.Int).SetString(right, 10)
-				sum := new(big.Int).Add(left, right)
-				return sum.Text(10), nil
-			}
-			return right, diagnostic
-		}
-		return left, diagnostic
+		return left, bounce, err
 	}
 	panic(reflect.TypeOf(self))
 }
@@ -362,7 +372,7 @@ func Compile(self Expression, envm env.Environment[Macro], envp env.Environment[
 		}
 		return pat.StdE, nil
 	}
-	if self, ok := self.(Application); ok {
+	if self, ok := self.(Call); ok {
 		if macro, ok := envm.Traverse(self.Identifier); ok {
 			parameters := macro.Parameters()
 			if len(self.Arguments) == len(parameters) {
@@ -677,7 +687,7 @@ func IsPure(self Expression, envm env.Environment[Macro], envp env.Environment[p
 		}
 		return true, nil
 	}
-	if self, ok := self.(Application); ok {
+	if self, ok := self.(Call); ok {
 		for _, argument := range self.Arguments {
 			pure, diagnostic := IsPure(argument, envm, envp, branch)
 			if diagnostic == nil {
@@ -740,7 +750,20 @@ func IsPure(self Expression, envm env.Environment[Macro], envp env.Environment[p
 	if self, ok := self.(With); ok {
 		pure, err := IsPure(self.Expression, envm, envp, branch)
 		if err == nil && pure {
-			return IsPure(self.Body, envm, envp, branch)
+			return IsPure(self.Body, env.Environment[Macro]{
+				Root:   envm.Root,
+				Parent: &envm,
+				Entries: env.Layer[Macro]{
+					self.Identifier: Placeholder{
+						identifier: self.Identifier,
+						pattern:    pat.StdNever,
+					},
+				},
+			}, env.Environment[pat.Pattern]{
+				Root:    envp.Root,
+				Parent:  &envp,
+				Entries: env.Layer[pat.Pattern]{},
+			}, branch)
 		}
 		return pure, err
 	}
@@ -819,6 +842,90 @@ func IsPure(self Expression, envm env.Environment[Macro], envp env.Environment[p
 	panic(reflect.TypeOf(self))
 }
 
+// Optimize all tail-call nodes in
+// the given expression.
+// ---
+func Tail(self Expression, envm env.Environment[Macro]) Expression {
+	if self, ok := self.(Call); ok {
+		delegate, _ := envm.Traverse(self.Identifier)
+		if _, ok := delegate.(*Source); ok {
+			return Jump{
+				Identifier: self.Identifier,
+				Arguments:  self.Arguments,
+				Excerpt:    self.Excerpt,
+			}
+		}
+		return self
+	}
+	if self, ok := self.(Switch); ok {
+		var buffer []Case
+		for _, branch := range self.Branches {
+			body := Tail(branch.Body, env.Environment[Macro]{
+				Root:   envm.Root,
+				Parent: &envm,
+				Entries: func() env.Layer[Macro] {
+					buffer := env.Layer[Macro]{}
+					for _, binding := range branch.Grammar.Bindings() {
+						buffer[binding.Name] = Placeholder{
+							identifier: binding.Name,
+							pattern:    binding.Pattern,
+						}
+					}
+					return buffer
+				}(),
+			})
+			buffer = append(buffer, Case{
+				Body:    body,
+				Grammar: branch.Grammar,
+			})
+		}
+		return Switch{
+			Source:   self.Source,
+			Branches: buffer,
+			Otherwise: Tail(self.Otherwise, env.Environment[Macro]{
+				Root:    envm.Root,
+				Parent:  &envm,
+				Entries: env.Layer[Macro]{},
+			}),
+			Excerpt: self.Excerpt,
+		}
+	}
+	if self, ok := self.(With); ok {
+		return With{
+			Identifier: self.Identifier,
+			Expression: self.Expression,
+			Body: Tail(self.Body, env.Environment[Macro]{
+				Root:   envm.Root,
+				Parent: &envm,
+				Entries: env.Layer[Macro]{
+					self.Identifier: Placeholder{
+						identifier: self.Identifier,
+						pattern:    pat.StdNever,
+					},
+				},
+			}),
+			Excerpt: self.Excerpt,
+		}
+	}
+	if self, ok := self.(If); ok {
+		return If{
+			Condition: self.Condition,
+			Body: Tail(self.Body, env.Environment[Macro]{
+				Root:    envm.Root,
+				Parent:  &envm,
+				Entries: env.Layer[Macro]{},
+			}),
+			Otherwise: Tail(self.Otherwise, env.Environment[Macro]{
+				Root:    envm.Root,
+				Parent:  &envm,
+				Entries: env.Layer[Macro]{},
+			}),
+			Excerpt: self.Excerpt,
+		}
+	}
+	return self
+}
+
 // Analyze the given expression in
 // the provided environment.
 // ---
@@ -830,18 +937,19 @@ func IsPure(self Expression, envm env.Environment[Macro], envp env.Environment[p
 func Analyze(self Expression, envm env.Environment[Macro], envp env.Environment[pat.Pattern], branch env.Branch[Macro]) (Implication, error) {
 	if self, ok := self.(Compare); ok {
 		acommutatively := func(left Expression, right Expression) (Implication, error) {
-			if left, ok := left.(Application); ok {
-				if right, ok := right.(Literal); ok {
-					constant, err := left.IsConstant(envm, envp, branch)
-					if err == nil && constant {
+			if left, ok := left.(Call); ok {
+				constant, err := left.IsConstant(envm, envp, branch)
+				if err == nil && constant {
+					pattern, err := Compile(right, envm, envp, branch)
+					if err == nil {
 						return &ImpFact{
 							identifier: left.Identifier,
-							pattern:    pat.Literal(right.Literal),
+							pattern:    pattern,
 						}, nil
 					}
 					return nil, err
 				}
-				return nil, nil
+				return nil, err
 			}
 			return nil, nil
 		}
@@ -862,7 +970,7 @@ func Analyze(self Expression, envm env.Environment[Macro], envp env.Environment[
 		return nil, err
 	}
 	if self, ok := self.(Satisfies); ok {
-		if application, ok := self.Expression.(Application); ok {
+		if application, ok := self.Expression.(Call); ok {
 			constant, err := application.IsConstant(envm, envp, branch)
 			if err == nil && constant {
 				return &ImpFact{

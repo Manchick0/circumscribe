@@ -1,3 +1,15 @@
+# circumscribe 0.4.0
+> November 22, 2026
+
+Introduce general TCO, and enhance the standard
+library with list primitives.
+
+- Tail-recursive functions may now recurse idefinitely,
+  others are still limited by the recursion limit.
+
+- Introduce seqhead and seqtail to the standard library,
+  alongside separator aliases for some list support.
+
 # circumscribe 0.3.0
 > November 21, 2026
 

@@ -17,7 +17,7 @@
 #
 
 #
-# w
+# w @since 0.1.0
 # ---
 # An alias for any character in the Unicode
 # range from 'u0000' to 'u10FFFF'.
@@ -25,7 +25,7 @@
 pat w: |\u0000|-|\u10FFFF|
 
 #
-# e
+# e @since 0.1.0
 # ---
 # An alias for the empty pattern '||'.
 #
@@ -42,7 +42,7 @@ pat w: |\u0000|-|\u10FFFF|
 pat e: ||
 
 #
-# never
+# never @since 0.1.0
 # ---
 # A pattern representing an empty set of
 # languages. Not a single language is
@@ -55,7 +55,7 @@ pat e: ||
 pat never: w & e
 
 #
-# any
+# any @since 0.1.0
 # ---
 # A pattern representing any possible snippet.
 #
@@ -67,7 +67,7 @@ pat never: w & e
 pat any: !never
 
 #
-# s
+# s @since 0.1.0
 # ---
 # A pattern matching a single ASCII
 # whitespace character.
@@ -82,15 +82,7 @@ pat any: !never
 pat s: |\u0009|-|\u000D| + |\u0020|
 
 #
-# us
-# ---
-# A pattern matching a single Unicode
-# whitespace character.
-#
-pat us: s + |\u0085| + |\u00A0| + |\u1680| + |\u2000|-|\u200A| + |\u2028|-|\u2029| + |\u202F| + |\u205F| + |\u3000|
-
-#
-# boolean
+# boolean @since 0.1.0
 # ---
 # A pattern representing the two boolean
 # literals, 'true' and 'false'.
@@ -104,7 +96,7 @@ pat us: s + |\u0085| + |\u00A0| + |\u1680| + |\u2000|-|\u200A| + |\u2028|-|\u202
 pat boolean: |true| + |false|
 
 #
-# natural
+# natural @since 0.1.0
 # ---
 # A pattern representing a natural number,
 # including the literal zero.
@@ -117,7 +109,7 @@ pat boolean: |true| + |false|
 pat natural: |0| + (|1|-|9| * |0|-|9|...)
 
 #
-# lt
+# lt @since 0.1.0
 # ---
 # An alias for the '<' symbol.
 #
@@ -134,7 +126,7 @@ pat natural: |0| + (|1|-|9| * |0|-|9|...)
 def lt: |\u003C|
 
 #
-# gt
+# gt @since 0.1.0
 # ---
 # An alias for the '>' symbol.
 #
@@ -146,7 +138,44 @@ def lt: |\u003C|
 def gt: |\u003E|
 
 #
-# ord(w)
+# us @since 0.4.0
+# ---
+# An alias for the unit separator.
+#
+# It's often desired to use the 'us'
+# in order to separate two parts of
+# a 'list', or any similar data
+# structure.
+#
+def us: |\u001F|
+pat us: |\u001F|
+
+#
+# rs @since 0.4.0
+# ---
+# An alias for the record separator.
+#
+def rs: |\u001E|
+pat rs: |\u001E|
+
+#
+# gs @since 0.4.0
+# ---
+# An alias for the group separator.
+#
+def gs: |\u001D|
+pat gs: |\u001D|
+
+#
+# fs @since 0.4.0
+# ---
+# An alias for the file separator.
+#
+def fs: |\u001C|
+pat fs: |\u001C|
+
+#
+# ord(w) @since 0.1.0
 # ---
 # Compute the Unicode codepoint of
 # the given character.
@@ -155,7 +184,7 @@ def ord(w: w) -> natural:
     ord'(w)
 
 #
-# chr(point)
+# chr(point) @since 0.1.0
 # ---
 # Compute the Unicode character for
 # the given codepoint.
@@ -164,7 +193,7 @@ def chr(point: natural) -> w:
     chr'(point)
 
 #
-# head(source)
+# head(source) @since 0.1.0
 # ---
 # Returns the firstmost character
 # of the given source:
@@ -175,18 +204,55 @@ def head(source: any) -> w + e:
     head'(source)
 
 #
-# tail(source)
+# seqhead(sequence) @since 0.4.0
 # ---
-# Returns the taiil of the given
+# Returns the head of the given
+# sequence, which is the part up
+# until the first unit separator:
+#
+# seqhead(|foo<us>bar<us>baz|) == |foo|
+#
+def seqhead(sequence: any) -> any:
+    seqhead'(sequence, ||)
+
+def seqhead'(sequence: any, buffer: any) -> any:
+    if meaningful(sequence):
+        with head(sequence) as head:
+            if head = us:
+                buffer
+            else seqhead'(tail(sequence), |<buffer><head>|)
+    else buffer
+
+#
+# tail(source) @since 0.1.0 
+# ---
+# Returns the tail of the given
 # source:
 #
-# head(|Hello, World!|) == |ello, World!|
+# tail(|Hello, World!|) == |ello, World!|
 #
 def tail(source: any) -> any:
     tail'(source)
 
 #
-# trim(source)
+# seqtail(sequence) @since 0.4.0
+# ---
+# Returns the tail of the given
+# sequence, which is the part
+# after the first unit separator:
+#
+# seqtail(|foo<us>bar<us>baz|) == |bar<us>baz|
+#
+def seqtail(sequence: any) -> any:
+    if meaningful(sequence):
+        with head(sequence) as head:
+            if head = us:
+                tail(sequence)
+            else seqtail(tail(sequence))
+    else ||
+
+#
+# trim(source) @since 0.1.0
 # ---
 # Trim the trailing and leading whitespace
 # from the given source.
@@ -195,7 +261,7 @@ def trim(source: any) -> any:
     trim'(source)
 
 #
-# length(source)
+# length(source) @since 0.1.0
 # ---
 # Compute the length of the given source.
 #
@@ -203,7 +269,7 @@ def length(source: any) -> natural:
     length'(source)
 
 #
-# reverse(source)
+# reverse(source) @since 0.1.0
 # ---
 # Reverse the given source.
 #
@@ -211,7 +277,7 @@ def reverse(source: any) -> any:
     reverse'(source)
 
 #
-# lowercase(source)
+# lowercase(source) @since 0.1.0
 # ---
 # Compute a snippet identical to the given
 # source, with all letters replaced with
@@ -221,7 +287,7 @@ def lowercase(source: any) -> any:
     lowercase'(source)
 
 #
-# uppercase(source)
+# uppercase(source) @since 0.1.0
 # ---
 # Compute a snippet identical to the given
 # source, with all letters replaced with
@@ -231,7 +297,7 @@ def uppercase(source: any) -> any:
     uppercase'(source)
 
 #
-# contains(source, snippet)
+# contains(source, snippet) @since 0.1.0
 # ---
 # Determine whether the given snippet
 # appears in the given source.
@@ -240,7 +306,8 @@ def contains(source: any, snippet: any) -> boolean:
     contains'(source, snippet)
 
 #
-# read(path)
+# read(path) @since 0.1.0
+#            @impure
 # ---
 # Read the content of the given file.
 # 
@@ -248,7 +315,8 @@ def read(path: any) -> any:
     read'(path)
 
 #
-# env(name)
+# env(name) @since 0.1.0
+#           @impure
 # ---
 # Return the value of the given environment
 # variable, or an empty snippet if unset. 
@@ -257,7 +325,7 @@ def env(name: any) -> any:
     env'(name)
 
 #
-# meaningful(source)
+# meaningful(source) @since 0.1.0
 # ---
 # Determine whether the given source is
 # non-empty.

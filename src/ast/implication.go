@@ -38,7 +38,7 @@ func Refine(implication Implication, envm env.Environment[Macro], envp env.Envir
 }
 
 func Under(source Expression, pattern pat.Pattern, envm env.Environment[Macro], envp env.Environment[pat.Pattern], branch env.Branch[Macro]) (env.Environment[Macro], error) {
-	if source, ok := source.(Application); ok {
+	if source, ok := source.(Call); ok {
 		constant, err := source.IsConstant(envm, envp, branch)
 		if err == nil && constant {
 			macro, ok := envm.Traverse(source.Identifier)

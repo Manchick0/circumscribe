@@ -130,7 +130,7 @@ func main() {
 						if err == nil {
 							_, diagnostic := ast.Compile(expression, envm, envp, env.Branch[ast.Macro]{})
 							if diagnostic == nil {
-								snippet, err := ast.Evaluate(expression, envm, envp, 0)
+								snippet, _, err := ast.Evaluate(expression, envm, envp, 0)
 								if err == nil {
 									fmt.Println(snippet)
 									os.Exit(0)
@@ -362,7 +362,7 @@ func substitute(name string, content string, envm env.Environment[ast.Macro], en
 			if diagnostic == nil {
 				_, diagnostic := ast.Compile(body, envm, envp, env.Branch[ast.Macro]{})
 				if diagnostic == nil {
-					snippet, diagnostic := ast.Evaluate(body, envm, envp, 0)
+					snippet, _, diagnostic := ast.Evaluate(body, envm, envp, 0)
 					if diagnostic == nil {
 						buffer.WriteString(snippet)
 						if reader.ReadSyntax(">") {

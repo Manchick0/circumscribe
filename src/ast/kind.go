@@ -26,24 +26,35 @@ func (self Snippet) Origin() *source.Excerpt {
 	return &self.Excerpt
 }
 
-type Application struct {
+type Call struct {
 	Identifier string
 	Arguments  []Expression
 	Bare       bool
 	Excerpt    source.Excerpt
 }
 
-func (self Application) expr() {}
-func (self Application) Origin() *source.Excerpt {
+func (self Call) expr() {}
+func (self Call) Origin() *source.Excerpt {
 	return &self.Excerpt
 }
 
-func (self Application) Infer(envm env.Environment[Macro], envp env.Environment[pat.Pattern], branch env.Branch[Macro]) (pat.Pattern, error) {
+type Jump struct {
+	Identifier string
+	Arguments  []Expression
+	Excerpt    source.Excerpt
+}
+
+func (self Jump) expr() {}
+func (self Jump) Origin() *source.Excerpt {
+	return &self.Excerpt
+}
+
+func (self Call) Infer(envm env.Environment[Macro], envp env.Environment[pat.Pattern], branch env.Branch[Macro]) (pat.Pattern, error) {
 	macro, _ := envm.Traverse(self.Identifier)
 	return macro.Infer(envm, envp, branch)
 }
 
-func (self Application) IsConstant(envm env.Environment[Macro], envp env.Environment[pat.Pattern], branch env.Branch[Macro]) (bool, error) {
+func (self Call) IsConstant(envm env.Environment[Macro], envp env.Environment[pat.Pattern], branch env.Branch[Macro]) (bool, error) {
 	if len(self.Arguments) == 0 {
 		macro, _ := envm.Traverse(self.Identifier)
 		return macro.IsPure(envm, envp, branch)
